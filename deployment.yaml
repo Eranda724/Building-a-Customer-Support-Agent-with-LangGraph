@@ -1,0 +1,11 @@
+apiVersion: llmops/v1
+kind: Deployment
+metadata:
+  name: customer-support
+spec:
+  image: your-docker-image
+  ports:
+    - port: 8000
+  env:
+    - name: GROQ_API_KEY
+      value: "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"
