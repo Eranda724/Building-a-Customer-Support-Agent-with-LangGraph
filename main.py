@@ -15,6 +15,7 @@ from enum import Enum
 from datetime import datetime
 import logging
 from functools import wraps
+import re
 
 class FeaturePriority(str, Enum):
     HIGH = "high"
@@ -103,12 +104,43 @@ custom_agents: Dict[str, Dict[str, Any]] = {}
 
 def extract_content(response: Any) -> str:
     if isinstance(response, AIMessage):
-        return str(response.content)
+        content = str(response.content)
     elif isinstance(response, dict) and "content" in response:
-        return str(response["content"])
+        content = str(response["content"])
     elif isinstance(response, (str, list)):
-        return str(response)
-    return str(response)
+        content = str(response)
+    else:
+        content = str(response)
+    
+    # Clean markdown formatting
+    return clean_markdown_formatting(content)
+
+def clean_markdown_formatting(text: str) -> str:
+    """Remove markdown formatting and convert to plain text"""
+    
+    # Remove bold formatting (**text** -> text)
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+    
+    # Remove italic formatting (*text* -> text)
+    text = re.sub(r'\*(.*?)\*', r'\1', text)
+    
+    # Remove code formatting (`text` -> text)
+    text = re.sub(r'`(.*?)`', r'\1', text)
+    
+    # Remove headers (# Header -> Header)
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    
+    # Remove links [text](url) -> text
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    
+    # Remove horizontal rules (--- or ***)
+    text = re.sub(r'^[-*]{3,}$', '', text, flags=re.MULTILINE)
+    
+    # Clean up extra whitespace
+    text = re.sub(r'\n\s*\n\s*\n', '\n\n', text)
+    text = text.strip()
+    
+    return text
 
 # Original agent functions
 def categorize(state: State) -> State:
@@ -134,8 +166,8 @@ def analyze_sentiment(state: State) -> State:
 def handle_technical(state: State) -> State:
     prompt = ChatPromptTemplate.from_template(
         "Provide a clear, step-by-step technical support response to the following query. "
-        "Use proper formatting with numbered steps, bullet points for additional info, "
-        "and highlight important terms using markdown. "
+        "Use simple, plain text formatting with clear sections and easy-to-follow instructions. "
+        "Avoid markdown formatting like #, *, or **. Just use plain text with proper spacing. "
         "Make the instructions easy to follow and well-spaced. Query: {query}"
     )
     chain = prompt | llm
@@ -146,8 +178,8 @@ def handle_technical(state: State) -> State:
 def handle_billing(state: State) -> State:
     prompt = ChatPromptTemplate.from_template(
         "Provide a clear, well-structured response to the following billing query. "
-        "Use proper formatting with sections, bullet points where needed, "
-        "and highlight important information using markdown. "
+        "Use simple, plain text formatting with clear sections and bullet points where needed. "
+        "Avoid markdown formatting like #, *, or **. Just use plain text with proper spacing. "
         "Keep sensitive information private and be clear about policies. Query: {query}"
     )
     chain = prompt | llm
@@ -158,8 +190,8 @@ def handle_billing(state: State) -> State:
 def handle_general(state: State) -> State:
     prompt = ChatPromptTemplate.from_template(
         "Provide a clear, well-formatted response to the following customer query. "
-        "Use proper spacing, bullet points or numbered lists where appropriate, "
-        "and highlight important information using markdown formatting (bold, italics). "
+        "Use simple, plain text formatting with proper spacing and clear sections. "
+        "Avoid markdown formatting like #, *, or **. Just use plain text with proper spacing. "
         "Keep the tone professional and friendly. Query: {query}"
     )
     chain = prompt | llm
@@ -437,6 +469,9 @@ def generate_agent_prompts(
     You are a professional customer support agent for {business_name}, a {business_type} business.
     {business_context}
     Always maintain a {tone} tone in your responses.
+    
+    IMPORTANT: Use only plain text formatting. Do not use markdown symbols like #, *, or **. 
+    Use simple text with proper spacing, clear sections, and easy-to-read formatting.
 
     {features_section}
 
@@ -459,22 +494,26 @@ def generate_agent_prompts(
                     f"- Acknowledge the customer's issue\n"
                     f"- Provide step-by-step guidance if applicable\n"
                     f"- Offer additional help if the issue isn't resolved\n"
+                    f"Use plain text formatting only - no markdown symbols.\n"
                     f"Query: {{query}}",
         "billing": f"{base_prompt}\n\nHandle this billing/payment related query for {business_name}.\n"
                   f"Important notes:\n"
                   f"- Never share sensitive customer information\n"
                   f"- Be clear about payment policies\n"
                   f"- Offer to connect with accounting for complex issues\n"
+                  f"Use plain text formatting only - no markdown symbols.\n"
                   f"Query: {{query}}",
         "general": f"{base_prompt}\n\nProvide comprehensive general customer support for this {business_name} query.\n"
                   f"Remember to:\n"
                   f"- Be friendly and welcoming\n"
                   f"- Provide complete information\n"
                   f"- Offer additional assistance\n"
+                  f"Use plain text formatting only - no markdown symbols.\n"
                   f"Query: {{query}}",
         "escalate": f"{base_prompt}\n\nThis query needs to be escalated to a human agent.\n"
                    f"Politely inform the customer that their issue will be handled by a specialist.\n"
                    f"Provide an estimated wait time if possible.\n"
+                   f"Use plain text formatting only - no markdown symbols.\n"
                    f"Query: {{query}}"
     }
 
@@ -709,86 +748,247 @@ async def get_ui():
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Customer Support Agent Builder</title>
+        <title>AI Support Agent Builder</title>
         <style>
-            body { font-family: Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background-color: #f5f5f5; }
-            .container { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); margin-bottom: 20px; }
-            textarea { width: 100%; height: 100px; margin: 10px 0; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical; }
-            input[type="text"] { width: 100%; padding: 8px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; }
-            button { background-color: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 5px; }
-            button:hover { background-color: #0056b3; }
-            .secondary-btn { background-color: #6c757d; }
-            .secondary-btn:hover { background-color: #545b62; }
-            .success-btn { background-color: #28a745; }
-            .success-btn:hover { background-color: #218838; }
-            #response, #builderResponse { margin-top: 20px; white-space: pre-wrap; }
-            .result-box { background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; padding: 10px; margin-top: 10px; }
-            .loading { display: none; margin: 10px 0; }
-            .options { margin: 10px 0; }
-            .option-btn { background-color: #e9ecef; color: #495057; border: 1px solid #ced4da; }
-            .option-btn:hover { background-color: #dee2e6; }
-            .features-container { margin: 15px 0; }
-            .feature-input-container { display: flex; gap: 10px; margin: 10px 0; }
-            .feature-input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
-            .add-feature-btn { background-color: #28a745; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; }
-            .add-feature-btn:hover { background-color: #218838; }
-            .feature-tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
-            .feature-tag { background-color: #007bff; color: white; padding: 5px 10px; border-radius: 15px; font-size: 12px; position: relative; }
-            .feature-tag .remove-btn { margin-left: 8px; cursor: pointer; font-weight: bold; }
-            .feature-tag .remove-btn:hover { color: #ffcccc; }
-            .suggestions { margin: 15px 0; }
-            .suggestion-btn { background-color: #f8f9fa; color: #495057; border: 1px solid #dee2e6; padding: 5px 10px; margin: 3px; border-radius: 15px; font-size: 12px; cursor: pointer; }
-            .suggestion-btn:hover { background-color: #e9ecef; }
-            .business-type-detected { background-color: #d1ecf1; color: #0c5460; padding: 10px; border-radius: 4px; margin: 10px 0; }
-            .business-input-container { margin: 15px 0; }
-            .business-description { width: 100%; height: 100px; margin: 10px 0; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical; }
-            .feature-description { color: #666; font-size: 0.9em; margin: 5px 0 0 25px; }
-            .feature-priority { display: inline-block; padding: 2px 6px; border-radius: 10px; font-size: 0.8em; margin-left: 10px; }
-            .priority-high { background-color: #ffd7d7; color: #d63031; }
-            .priority-medium { background-color: #ffeaa7; color: #fdcb6e; }
-            .priority-low { background-color: #dff9fb; color: #00cec9; }
-            .feature-tag { display: flex; align-items: center; background-color: #007bff; color: white; padding: 5px 10px; border-radius: 15px; font-size: 12px; margin: 5px; }
-            .feature-tag .feature-info { flex-grow: 1; }
-            .feature-tag .remove-btn { margin-left: 8px; cursor: pointer; font-weight: bold; }
-            .suggestion-btn { display: flex; flex-direction: column; align-items: flex-start; background-color: #f8f9fa; color: #495057; border: 1px solid #dee2e6; padding: 8px 15px; margin: 5px; border-radius: 8px; font-size: 12px; cursor: pointer; width: 100%; text-align: left; }
-            .suggestion-btn:hover { background-color: #e9ecef; }
-            .suggestions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; margin: 15px 0; }
+            :root {
+                --primary-color: #2563eb;
+                --secondary-color: #1e40af;
+                --background-color: #f8fafc;
+                --text-color: #1e293b;
+                --border-color: #e2e8f0;
+                --success-color: #059669;
+                --container-width: 900px;
+            }
+
+            body {
+                font-family: 'Segoe UI', Arial, sans-serif;
+                margin: 0;
+                padding: 0;
+                background-color: var(--background-color);
+                color: var(--text-color);
+            }
+
+            .header {
+                background-color: white;
+                padding: 1rem;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                position: fixed;
+                width: 100%;
+                top: 0;
+                z-index: 100;
+            }
+
+            .header-content {
+                max-width: var(--container-width);
+                margin: 0 auto;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+
+            .logo {
+                font-size: 1.5rem;
+                font-weight: bold;
+                color: var(--primary-color);
+            }
+
+            .get-help-btn {
+                background-color: var(--primary-color);
+                color: white;
+                border: none;
+                padding: 0.75rem 1.5rem;
+                border-radius: 0.5rem;
+                cursor: pointer;
+                font-weight: 600;
+                transition: background-color 0.2s;
+            }
+
+            .get-help-btn:hover {
+                background-color: var(--secondary-color);
+            }
+
+            .main-container {
+                max-width: var(--container-width);
+                margin: 6rem auto 2rem;
+                padding: 0 1rem;
+                transition: max-width 0.3s;
+            }
+
+            .main-container.fullscreen {
+                max-width: 100%;
+                margin: 6rem 2rem 2rem;
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 2rem;
+            }
+
+            .container {
+                background-color: white;
+                padding: 2rem;
+                border-radius: 1rem;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+                margin-bottom: 2rem;
+            }
+
+            .container h2 {
+                margin-top: 0;
+                color: var(--primary-color);
+                font-size: 1.5rem;
+                margin-bottom: 1rem;
+            }
+
+            .container p {
+                color: #64748b;
+                margin-bottom: 1.5rem;
+            }
+
+            textarea, input[type="text"] {
+                width: 100%;
+                padding: 0.75rem;
+                border: 1px solid var(--border-color);
+                border-radius: 0.5rem;
+                margin: 0.5rem 0;
+                font-family: inherit;
+            }
+
+            button {
+                background-color: var(--primary-color);
+                color: white;
+                border: none;
+                padding: 0.75rem 1.5rem;
+                border-radius: 0.5rem;
+                cursor: pointer;
+                font-weight: 600;
+                margin: 0.5rem;
+                transition: background-color 0.2s;
+            }
+
+            button:hover {
+                background-color: var(--secondary-color);
+            }
+
+            .option-btn {
+                background-color: #f1f5f9;
+                color: var(--text-color);
+            }
+
+            .option-btn:hover {
+                background-color: #e2e8f0;
+            }
+
             .response-box {
-                background-color: #f8f9fa;
-                border: 1px solid #ddd;
-                border-radius: 8px;
-                padding: 15px;
-                margin-top: 15px;
+                background-color: #f8fafc;
+                border: 1px solid var(--border-color);
+                border-radius: 0.5rem;
+                padding: 1rem;
+                margin-top: 1rem;
                 white-space: pre-wrap;
-                font-family: Arial, sans-serif;
+                font-family: inherit;
                 line-height: 1.6;
+            }
+
+            .loading {
+                display: none;
+                color: var(--primary-color);
+                margin: 1rem 0;
+                font-weight: 500;
+            }
+
+            .feature-input-container {
+                display: flex;
+                gap: 1rem;
+                margin: 1rem 0;
+            }
+
+            .feature-tags {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                margin: 1rem 0;
+            }
+
+            .feature-tag {
+                background-color: var(--primary-color);
+                color: white;
+                padding: 0.5rem 1rem;
+                border-radius: 1rem;
+                font-size: 0.875rem;
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+            }
+
+            .feature-tag .remove-btn {
+                background: none;
+                border: none;
+                color: white;
+                padding: 0;
+                margin: 0;
+                cursor: pointer;
+                font-weight: bold;
+            }
+
+            .suggestions-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                gap: 1rem;
+                margin: 1rem 0;
+            }
+
+            .suggestion-btn {
+                text-align: left;
+                background-color: #f1f5f9;
+                padding: 1rem;
+                border-radius: 0.5rem;
+                display: flex;
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+
+            .hidden {
+                display: none;
+            }
+
+            @media (max-width: 768px) {
+                .main-container.fullscreen {
+                    grid-template-columns: 1fr;
+                    margin: 6rem 1rem 2rem;
+                }
             }
         </style>
     </head>
     <body>
-        <div class="container">
-            <h1>Customer Support Agent</h1>
-            <h2>Test Default Agent</h2>
-            <textarea id="query" placeholder="Type your question here..."></textarea>
-            <button onclick="submitQuery()">Submit Query</button>
-            <div id="loading" class="loading">Processing...</div>
-            <div id="response"></div>
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">AI Support Builder</div>
+                <button class="get-help-btn" onclick="toggleFullscreen()">Get Help with AI</button>
         </div>
+        </header>
 
-        <div class="container">
-            <h2>🤖 Custom Agent Builder</h2>
-            <p>Create your own custom customer support agent tailored to your business needs!</p>
+        <div class="main-container" id="mainContainer">
+            <div class="container" id="builderContainer">
+                <h2>Custom Agent Builder</h2>
+                <p>Create your own custom support agent tailored to your business needs!</p>
             <button onclick="startAgentBuilder()" class="success-btn">Start Building Custom Agent</button>
             <div id="builderLoading" class="loading">Processing...</div>
             <div id="builderResponse"></div>
         </div>
 
-        <div class="container">
+            <div class="container hidden" id="supportContainer">
+                <h2>Customer Support Agent</h2>
+                <textarea id="query" placeholder="Type your question here..."></textarea>
+                <button onclick="submitQuery()">Submit Query</button>
+                <div id="loading" class="loading">Processing...</div>
+                <div id="response"></div>
+            </div>
+
+            <div class="container" id="testContainer">
             <h2>Test Custom Agent</h2>
             <input type="text" id="agentId" placeholder="Enter Agent ID">
             <textarea id="customQuery" placeholder="Type your question for the custom agent..."></textarea>
             <button onclick="testCustomAgent()">Test Custom Agent</button>
             <div id="customResponse"></div>
+            </div>
         </div>
 
         <script>
@@ -796,6 +996,21 @@ async def get_ui():
             let selectedFeatures = [];
             let availableSuggestions = [];
             let featureDetails = {};
+            let isFullscreen = false;
+
+            function toggleFullscreen() {
+                isFullscreen = !isFullscreen;
+                const mainContainer = document.getElementById('mainContainer');
+                const supportContainer = document.getElementById('supportContainer');
+                
+                if (isFullscreen) {
+                    mainContainer.classList.add('fullscreen');
+                    supportContainer.classList.remove('hidden');
+                } else {
+                    mainContainer.classList.remove('fullscreen');
+                    supportContainer.classList.add('hidden');
+                }
+            }
 
             async function submitQuery() {
                 const query = document.getElementById('query').value.trim();
