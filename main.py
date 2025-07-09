@@ -1,14 +1,14 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, SecretStr, validator
-from typing import Dict, Any, Union, cast, List, Optional
+from typing import Dict, Any, Union, cast, List, Optional, BinaryIO
 from langgraph.graph import StateGraph, END
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables.graph import MermaidDrawMethod
 from langchain_groq import ChatGroq
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 import json
 import uuid
 from enum import Enum
@@ -16,6 +16,71 @@ from datetime import datetime
 import logging
 from functools import wraps
 import re
+import os
+from io import BytesIO
+import sounddevice as sd
+from scipy.io.wavfile import write
+from elevenlabs import play
+from elevenlabs.client import ElevenLabs
+from groq import Groq
+import simpleaudio as sa
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Initialize ElevenLabs client
+elevenlabs = ElevenLabs(
+    api_key=os.getenv("ELEVENLABS_API_KEY"),
+)
+
+# Initialize Groq client for transcription
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
+# Voice interaction functions
+def generate_audio(text: str, model: str = "eleven_multilingual_v2") -> BytesIO:
+    """Generate audio from text using ElevenLabs API."""
+    audio = elevenlabs.text_to_speech.convert(
+        text=text,
+        voice_id="JBFqnCBsd6RMkjVDRZzb",
+        model_id=model,
+        output_format="mp3_44100_128",
+    )
+    # Convert audio iterator to bytes
+    audio_bytes = b''.join(list(audio))
+    buffer = BytesIO(audio_bytes)
+    return buffer
+
+def record_audio(duration: int = 10, fs: int = 44100) -> BytesIO:
+    """Record audio from the user's microphone."""
+    print("Recording...")
+    recording = sd.rec(int(duration * fs), samplerate=fs, channels=1)
+    sd.wait()
+    buffer = BytesIO()
+    write(buffer, fs, recording)
+    buffer.seek(0)
+    return buffer
+
+def transcribe_audio(audio_buffer: BytesIO) -> str:
+    """Transcribe audio to text using Groq's Whisper model."""
+    try:
+        audio_buffer.seek(0)
+        transcription = groq_client.audio.transcriptions.create(
+            file=("audio.wav", audio_buffer.read()),
+            model="whisper-large-v3",
+        )
+        return transcription.text
+    except Exception as e:
+        raise Exception(f"Error during transcription: {e}")
+
+# Voice interaction request/response models
+class VoiceInteractionRequest(BaseModel):
+    agent_id: Optional[str] = None
+    duration: int = Field(default=10, ge=1, le=60)
+
+class VoiceInteractionResponse(BaseModel):
+    text_response: str
+    audio_url: str
 
 class FeaturePriority(str, Enum):
     HIGH = "high"
@@ -77,6 +142,7 @@ class BusinessType(str, Enum):
     ECOMMERCE = "ecommerce"
     HEALTHCARE = "healthcare"
     EDUCATION = "education"
+    FITNESS_AND_WELLNESS = "fitness_and_wellness"  # Added for gym/fitness businesses
     CUSTOM = "custom"
 
 class AgentFeature(str, Enum):
@@ -88,6 +154,10 @@ class AgentFeature(str, Enum):
     APPOINTMENT_SCHEDULING = "appointment_scheduling"
     REFUND_PROCESSING = "refund_processing"
     MULTILINGUAL_SUPPORT = "multilingual_support"
+    SCHEDULE_BOOKING = "schedule_booking"  # Added for fitness businesses
+    TRAINER_INFO = "trainer_info"  # Added for fitness businesses
+    PRICING_INFO = "pricing_info"  # Added for pricing queries
+    LOCATION_INFO = "location_info"  # Added for location queries
 
 # Initialize LLM
 GROQ_API_KEY = SecretStr("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")
@@ -95,12 +165,22 @@ GROQ_API_KEY = SecretStr("gsk_ctYbgJG5tHbtgwxmsZgnWGdyb3FY2SoSCilahnOcfQfyMAfFES
 llm = ChatGroq(
     temperature=0.7,
     api_key=SecretStr(GROQ_API_KEY.get_secret_value()),
-    model="mistral-saba-24b"
+    model="mistral-saba-24b",
+    stop_sequences=None  # Add this parameter
 )
 
-# Store agent builder sessions in memory (use Redis/Database in production)
-agent_builder_sessions: Dict[str, AgentBuilderState] = {}
-custom_agents: Dict[str, Dict[str, Any]] = {}
+# Add import for agent storage
+from agent_storage import (
+    save_agent_config,
+    load_agent_config,
+    update_agent_config,
+    delete_agent_config,
+    list_agents,
+    create_agent_step_1,
+    add_agent_features,
+    set_agent_tone,
+    finalize_agent
+)
 
 def extract_content(response: Any) -> str:
     if isinstance(response, AIMessage):
@@ -224,7 +304,7 @@ def analyze_business_context(business_name: str, business_description: str = "")
     
     Please provide a JSON response with the following structure:
     {
-        "business_category": "primary business category",
+        "business_category": "primary business category (e.g., fitness_and_wellness, ecommerce, etc.)",
         "business_context": "2-3 sentence description of what the business does",
         "suggested_features": [
             {
@@ -238,6 +318,13 @@ def analyze_business_context(business_name: str, business_description: str = "")
         "customer_interaction_points": ["where", "customers", "typically", "need", "support"],
         "recommended_tone": "professional/friendly/casual/empathetic"
     }
+    
+    For fitness and wellness businesses, consider features like:
+    - Schedule booking
+    - Trainer information
+    - Pricing packages
+    - Location options
+    - General support
     
     Focus on understanding the unique aspects of this business and suggest features that would be most valuable for their customer support needs.
     """)
@@ -276,26 +363,44 @@ def analyze_business_context(business_name: str, business_description: str = "")
             "interaction_points": result["customer_interaction_points"],
             "recommended_tone": result["recommended_tone"]
         }
-    except json.JSONDecodeError as e:
-        # Handle JSON decode error specifically
-        return {
-            "business_type": "custom",
-            "business_context": f"Business providing {business_name} services",
-            "suggested_features": [
-                Feature(
-                    id="general_support",
-                    name="General Support",
-                    description="Basic customer support capabilities",
-                    priority=FeaturePriority.HIGH
-                )
-            ],
-            "key_terms": [business_name.lower()],
-            "interaction_points": ["general inquiries"],
-            "recommended_tone": "professional"
-        }
     except Exception as e:
-        # Log the error for debugging
         print(f"Error analyzing business context: {str(e)}")
+        # Provide fitness-specific defaults if the business seems fitness-related
+        if any(term in business_name.lower() or term in business_description.lower() 
+               for term in ["gym", "fitness", "trainer", "workout"]):
+            return {
+                "business_type": "fitness_and_wellness",
+                "business_context": f"Fitness service providing {business_name} training and support",
+                "suggested_features": [
+                    Feature(
+                        id="schedule_booking",
+                        name="Schedule Booking",
+                        description="Book and manage training sessions",
+                        priority=FeaturePriority.HIGH
+                    ),
+                    Feature(
+                        id="trainer_info",
+                        name="Trainer Information",
+                        description="Information about trainers and specialties",
+                        priority=FeaturePriority.MEDIUM
+                    ),
+                    Feature(
+                        id="pricing_info",
+                        name="Pricing Information",
+                        description="Details about training packages and pricing",
+                        priority=FeaturePriority.HIGH
+                    ),
+                    Feature(
+                        id="location_info",
+                        name="Location Options",
+                        description="Available training locations and options",
+                        priority=FeaturePriority.HIGH
+                    )
+                ],
+                "key_terms": ["fitness", "trainer", "workout", "schedule", "pricing"],
+                "interaction_points": ["schedule booking", "pricing inquiries", "location preferences"],
+                "recommended_tone": "professional_friendly"
+            }
         return {
             "business_type": "custom",
             "business_context": f"Business providing {business_name} services",
@@ -459,7 +564,14 @@ def generate_agent_prompts(
 
     # Add additional context based on business type
     business_context = ""
-    if business_type == BusinessType.ECOMMERCE:
+    if business_type == BusinessType.FITNESS_AND_WELLNESS:
+        business_context = """As a fitness and wellness service:
+- Focus on scheduling, trainer availability, and location preferences
+- Be clear about pricing packages and any requirements
+- Maintain a motivating and supportive tone
+- Respect client privacy and fitness goals
+- For complex inquiries, offer to connect with a trainer directly"""
+    elif business_type == BusinessType.ECOMMERCE:
         business_context = "As an e-commerce business, focus on order tracking, product information, and payment issues."
     elif business_type == BusinessType.HEALTHCARE:
         business_context = "As a healthcare provider, prioritize patient privacy, appointment scheduling, and medical information accuracy."
@@ -484,51 +596,125 @@ def generate_agent_prompts(
     Your goal is to provide excellent customer support and resolve issues efficiently for {business_name}.
     """
 
-    return {
-        "categorize": f"{base_prompt}\n\nCategorize this customer query into the most appropriate category for {business_name}.\n"
-                     f"Available categories: Technical, Billing, General, or Other if it doesn't fit.\n"
-                     f"Respond with ONLY the category name.\n"
-                     f"Query: {{query}}",
-        "technical": f"{base_prompt}\n\nProvide detailed technical support for this {business_name} query.\n"
-                    f"Be sure to:\n"
-                    f"- Acknowledge the customer's issue\n"
-                    f"- Provide step-by-step guidance if applicable\n"
-                    f"- Offer additional help if the issue isn't resolved\n"
-                    f"Use plain text formatting only - no markdown symbols.\n"
-                    f"Query: {{query}}",
-        "billing": f"{base_prompt}\n\nHandle this billing/payment related query for {business_name}.\n"
-                  f"Important notes:\n"
-                  f"- Never share sensitive customer information\n"
-                  f"- Be clear about payment policies\n"
-                  f"- Offer to connect with accounting for complex issues\n"
-                  f"Use plain text formatting only - no markdown symbols.\n"
-                  f"Query: {{query}}",
-        "general": f"{base_prompt}\n\nProvide comprehensive general customer support for this {business_name} query.\n"
-                  f"Remember to:\n"
-                  f"- Be friendly and welcoming\n"
-                  f"- Provide complete information\n"
-                  f"- Offer additional assistance\n"
-                  f"Use plain text formatting only - no markdown symbols.\n"
-                  f"Query: {{query}}",
-        "escalate": f"{base_prompt}\n\nThis query needs to be escalated to a human agent.\n"
-                   f"Politely inform the customer that their issue will be handled by a specialist.\n"
-                   f"Provide an estimated wait time if possible.\n"
-                   f"Use plain text formatting only - no markdown symbols.\n"
-                   f"Query: {{query}}"
-    }
+    # Customize prompts based on business type
+    if business_type == BusinessType.FITNESS_AND_WELLNESS:
+        return {
+            "categorize": f"{base_prompt}\n\nCategorize this customer query into the most appropriate category:\n"
+                         f"- Schedule: For booking and managing training sessions\n"
+                         f"- Pricing: For package and payment inquiries\n"
+                         f"- Location: For training location preferences\n"
+                         f"- General: For other inquiries\n"
+                         f"Respond with ONLY the category name.\n"
+                         f"Query: {{query}}",
+            
+            "technical": f"{base_prompt}\n\nProvide detailed information about scheduling and training options.\n"
+                        f"Be sure to:\n"
+                        f"- Confirm schedule availability\n"
+                        f"- Explain location options\n"
+                        f"- Mention any equipment requirements\n"
+                        f"- Offer trainer preferences if applicable\n"
+                        f"Use plain text formatting only.\n"
+                        f"Query: {{query}}",
+            
+            "billing": f"{base_prompt}\n\nHandle pricing and payment related queries.\n"
+                      f"Important notes:\n"
+                      f"- Be clear about package prices\n"
+                      f"- Explain any membership requirements\n"
+                      f"- Mention payment methods accepted\n"
+                      f"- For discount requests, refer to management\n"
+                      f"Use plain text formatting only.\n"
+                      f"Query: {{query}}",
+            
+            "general": f"{base_prompt}\n\nProvide helpful information about our fitness services.\n"
+                      f"Remember to:\n"
+                      f"- Be encouraging and supportive\n"
+                      f"- Focus on client goals\n"
+                      f"- Offer relevant training options\n"
+                      f"- Suggest trainer consultation if needed\n"
+                      f"Use plain text formatting only.\n"
+                      f"Query: {{query}}",
+            
+            "escalate": f"{base_prompt}\n\nThis query needs trainer or management attention.\n"
+                       f"Politely inform the client:\n"
+                       f"- Their query requires specialized attention\n"
+                       f"- A trainer/manager will contact them\n"
+                       f"- Provide contact options and hours\n"
+                       f"Use plain text formatting only.\n"
+                       f"Query: {{query}}"
+        }
+    else:
+        # Default prompts for other business types
+        return {
+            "categorize": f"{base_prompt}\n\nCategorize this customer query into the most appropriate category for {business_name}.\n"
+                         f"Available categories: Technical, Billing, General, or Other if it doesn't fit.\n"
+                         f"Respond with ONLY the category name.\n"
+                         f"Query: {{query}}",
+            
+            "technical": f"{base_prompt}\n\nProvide detailed technical support for this {business_name} query.\n"
+                        f"Be sure to:\n"
+                        f"- Acknowledge the customer's issue\n"
+                        f"- Provide step-by-step guidance if applicable\n"
+                        f"- Offer additional help if the issue isn't resolved\n"
+                        f"Use plain text formatting only.\n"
+                        f"Query: {{query}}",
+            
+            "billing": f"{base_prompt}\n\nHandle this billing/payment related query for {business_name}.\n"
+                      f"Important notes:\n"
+                      f"- Never share sensitive customer information\n"
+                      f"- Be clear about payment policies\n"
+                      f"- Offer to connect with accounting for complex issues\n"
+                      f"Use plain text formatting only.\n"
+                      f"Query: {{query}}",
+            
+            "general": f"{base_prompt}\n\nProvide comprehensive general customer support for this {business_name} query.\n"
+                      f"Remember to:\n"
+                      f"- Be friendly and welcoming\n"
+                      f"- Provide complete information\n"
+                      f"- Offer additional assistance\n"
+                      f"Use plain text formatting only.\n"
+                      f"Query: {{query}}",
+            
+            "escalate": f"{base_prompt}\n\nThis query needs to be escalated to a human agent.\n"
+                       f"Politely inform the customer that their issue will be handled by a specialist.\n"
+                       f"Provide an estimated wait time if possible.\n"
+                       f"Use plain text formatting only.\n"
+                       f"Query: {{query}}"
+        }
 
 
 def create_custom_agent(config: Dict[str, Any]) -> Any:
     """Create a custom agent based on configuration with enhanced error handling and logging"""
 
     # Validate configuration
-    if not config or "prompts" not in config:
-        raise ValueError("Invalid agent configuration: missing prompts")
-
-    prompts = config.get("prompts", {})
+    if not config:
+        raise ValueError("Invalid agent configuration: missing configuration")
 
     # Create a logger for the agent
     logger = logging.getLogger(f"custom_agent_{uuid.uuid4()}")
+
+    def format_response(query_type: str, query: str, available_info: Dict[str, Any]) -> str:
+        """Format response based on query type and available information"""
+        if query_type == "menu":
+            menu_items = available_info.get("menu_items", [])
+            response = ["Here are our available meals and prices:"]
+            for item in menu_items:
+                response.append(f"\n{item['name']}: ${item['price']}")
+                response.append(f"- {item['description']}")
+            response.append("\nPrices may vary based on location and promotions.")
+        elif query_type == "contact":
+            contact = available_info.get("contact_info", {})
+            response = [
+                f"You can reach us at:",
+                f"Phone: {contact.get('phone', 'Not available')}",
+                f"Email: {contact.get('email', 'Not available')}",
+                f"Hours: {contact.get('hours', 'Not available')}"
+            ]
+        else:
+            response = [f"I'll help you with your {query_type} query."]
+            if "custom_requirements" in available_info:
+                response.append(available_info["custom_requirements"])
+        
+        return "\n".join(response)
 
     def log_and_continue(func):
         """Decorator to log function execution and handle errors"""
@@ -541,127 +727,55 @@ def create_custom_agent(config: Dict[str, Any]) -> Any:
                 return result
             except Exception as e:
                 logger.error(f"Error in {func.__name__}: {str(e)}", exc_info=True)
-                # Return a state with an error response
                 state = args[0]
-                state.response = f"I'm sorry, I encountered an error while processing your request. Please try again later."
+                state.response = "I apologize, but I encountered an error. Please try again or contact our support team."
                 return state
         return wrapper
 
     @log_and_continue
     def custom_categorize(state: State) -> State:
-        prompt_template = prompts.get("categorize", "Categorize this customer query: {query}")
-        try:
-            prompt = ChatPromptTemplate.from_template(prompt_template)
-            chain = prompt | llm
-            response = chain.invoke({"query": state.query})
-            content = extract_content(response)
-            state.category = content.strip().lower()
-            logger.info(f"Categorized query as: {state.category}")
-        except Exception as e:
-            logger.error(f"Error in categorization: {str(e)}")
+        """Categorize the query based on content"""
+        query = state.query.lower()
+        
+        # Check for menu/price related queries
+        if any(word in query for word in ["menu", "price", "cost", "meal", "food", "eat"]):
+            state.category = "menu"
+        # Check for order related queries
+        elif any(word in query for word in ["order", "delivery", "track", "status"]):
+            state.category = "order"
+        # Check for contact/support queries
+        elif any(word in query for word in ["contact", "support", "help", "phone", "email"]):
+            state.category = "contact"
+        else:
             state.category = "general"
+        
         return state
 
     @log_and_continue
-    def custom_technical(state: State) -> State:
-        prompt_template = prompts.get("technical", "Provide technical support for this query: {query}")
-        prompt = ChatPromptTemplate.from_template(prompt_template)
-        chain = prompt | llm
-        response = chain.invoke({"query": state.query})
-        state.response = extract_content(response)
+    def handle_query(state: State) -> State:
+        """Handle the query based on its category"""
+        response = format_response(
+            state.category,
+            state.query,
+            config
+        )
+        state.response = response
         return state
 
-    @log_and_continue
-    def custom_billing(state: State) -> State:
-        prompt_template = prompts.get("billing", "Provide billing support for this query: {query}")
-        prompt = ChatPromptTemplate.from_template(prompt_template)
-        chain = prompt | llm
-        response = chain.invoke({"query": state.query})
-        state.response = extract_content(response)
-        return state
-
-    @log_and_continue
-    def custom_general(state: State) -> State:
-        prompt_template = prompts.get("general", "Provide general support for this query: {query}")
-        prompt = ChatPromptTemplate.from_template(prompt_template)
-        chain = prompt | llm
-        response = chain.invoke({"query": state.query})
-        state.response = extract_content(response)
-        return state
-
-    @log_and_continue
-    def custom_escalate(state: State) -> State:
-        try:
-            # Try to use a custom escalation prompt if available
-            if "escalate" in prompts:
-                prompt_template = prompts.get("escalate")
-                prompt = ChatPromptTemplate.from_template(prompt_template)
-                chain = prompt | llm
-                response = chain.invoke({"query": state.query})
-                state.response = extract_content(response)
-            else:
-                state.response = "I'm sorry, I need to escalate this issue to a human agent. Please hold on while I transfer you."
-        except Exception as e:
-            logger.error(f"Error in escalation: {str(e)}")
-            state.response = "I'm sorry, I need to escalate this issue to a human agent. Please hold on while I transfer you."
-        return state
-
-    # Create workflow with enhanced error handling
+    # Create workflow
     workflow = StateGraph(State)
 
-    # Add nodes with error handling
-    try:
-        workflow.add_node("categorize", custom_categorize)
-        workflow.add_node("analyze_sentiment", analyze_sentiment)
-        workflow.add_node("handle_billing", custom_billing)
-        workflow.add_node("handle_technical", custom_technical)
-        workflow.add_node("handle_general", custom_general)
-        workflow.add_node("escalate", custom_escalate)
+    # Add nodes
+    workflow.add_node("categorize", custom_categorize)
+    workflow.add_node("handle_query", handle_query)
 
-        # Add edges
-        workflow.add_edge("categorize", "analyze_sentiment")
+    # Add edges
+    workflow.add_edge("categorize", "handle_query")
+    workflow.add_edge("handle_query", END)
 
-        # Enhanced routing with fallback
-        def enhanced_route_query(state: State) -> str:
-            try:
-                if state.sentiment == "negative":
-                    return "escalate"
-                elif state.category == "billing":
-                    return "handle_billing"
-                elif state.category == "technical":
-                    return "handle_technical"
-                else:
-                    return "handle_general"
-            except Exception as e:
-                logger.error(f"Error in routing: {str(e)}")
-                return "handle_general"
+    workflow.set_entry_point("categorize")
 
-        workflow.add_conditional_edges(
-            "analyze_sentiment",
-            enhanced_route_query,
-            {
-                "handle_technical": "handle_technical",
-                "handle_billing": "handle_billing",
-                "handle_general": "handle_general",
-                "escalate": "escalate"
-            }
-        )
-
-        # Add final edges
-        workflow.add_edge("escalate", END)
-        workflow.add_edge("handle_technical", END)
-        workflow.add_edge("handle_billing", END)
-        workflow.add_edge("handle_general", END)
-
-        workflow.set_entry_point("categorize")
-
-        # Compile and return the workflow
-        return workflow.compile()
-
-    except Exception as e:
-        logger.error(f"Error creating workflow: {str(e)}")
-        raise
-
+    return workflow.compile()
 
 # Original workflow
 workflow = StateGraph(State)
@@ -1399,7 +1513,14 @@ async def get_support(query: Query):
 @app.post("/agent-builder/start", response_model=AgentBuilderResponse)
 async def start_agent_builder(request: StartAgentBuilderRequest):
     session_id = str(uuid.uuid4())
-    agent_builder_sessions[session_id] = AgentBuilderState(session_id=session_id)
+    
+    # Create initial agent config with placeholder values
+    # These will be updated in step 1 when user provides actual business info
+    session_id = create_agent_step_1(
+        business_name="Temporary Business Name",
+        business_purpose="Temporary Purpose",
+        business_description="Temporary Description"
+    )
     
     return AgentBuilderResponse(
         session_id=session_id,
@@ -1410,25 +1531,31 @@ async def start_agent_builder(request: StartAgentBuilderRequest):
 
 @app.post("/agent-builder/step", response_model=AgentBuilderResponse)
 async def agent_builder_step(request: AgentBuilderStepRequest):
-    session = agent_builder_sessions.get(request.session_id)
-    if not session:
+    agent_config = load_agent_config(request.session_id)
+    if not agent_config:
         raise HTTPException(status_code=404, detail="Session not found")
     
+    current_step = agent_config.get("current_step", 0)
+    
     # Process the current step
-    if session.current_step == 0:
+    if current_step == 0:
         # Store business info and analyze context
         parts = request.answer.split("\n", 1)
-        session.business_name = parts[0].strip()
-        session.business_description = parts[1].strip() if len(parts) > 1 else ""
+        business_name = parts[0].strip()
+        business_description = parts[1].strip() if len(parts) > 1 else ""
         
-        # Analyze business context
-        analysis = analyze_business_context(session.business_name, session.business_description)
+        # Create new agent with actual business info
+        session_id = create_agent_step_1(
+            business_name=business_name,
+            business_purpose=business_description[:50],  # Use first 50 chars as short purpose
+            business_description=business_description
+        )
         
-        session.business_type = analysis["business_type"]
-        session.business_context = analysis["business_context"]
-        session.key_terms = analysis["key_terms"]
-        session.interaction_points = analysis["interaction_points"]
-        session.suggested_features = analysis["suggested_features"]  # These are already Feature objects
+        # Load the new config
+        agent_config = load_agent_config(session_id)
+        
+        # Analyze business context for suggestions
+        analysis = analyze_business_context(business_name, business_description)
         
         business_type_info = f"""Based on your description, we understand that:
         
@@ -1438,131 +1565,101 @@ async def agent_builder_step(request: AgentBuilderStepRequest):
 
 We've suggested some features that might be helpful for your customer support needs."""
         
-        session.current_step = 1
         return AgentBuilderResponse(
-            session_id=session.session_id,
+            session_id=session_id,
             step=1,
             question="What features should your agent support? Add custom features or select from our suggestions.",
             options=None,
             business_type_info=business_type_info,
-            suggestions=[feature.id for feature in session.suggested_features]
+            suggestions=[feature.id for feature in analysis["suggested_features"]]
         )
     
-    elif session.current_step == 1:
+    elif current_step == 1:
         # Handle feature selection/addition
         feature_ids = [f.strip() for f in request.answer.split(",")]
         
-        # Combine selected suggested features and custom features
-        session.selected_features = [
-            feature for feature in session.suggested_features
-            if feature.id in feature_ids
-        ]
+        # Convert feature IDs to feature objects
+        features = []
+        for f_id in feature_ids:
+            features.append({
+                "name": f_id.replace("_", " ").title(),
+                "description": "Selected feature"
+            })
         
-        # Add any custom features that weren't in suggestions
-        custom_features = [
-            Feature(
-                id=f_id,
-                name=f_id.replace("_", " ").title(),
-                description="Custom feature added by user",
-                priority=FeaturePriority.MEDIUM,
-                is_custom=True
-            )
-            for f_id in feature_ids
-            if f_id not in [f.id for f in session.selected_features]
-        ]
-        session.selected_features.extend(custom_features)
+        # Add features to agent
+        add_agent_features(request.session_id, features)
         
-        session.current_step = 2
         return AgentBuilderResponse(
-            session_id=session.session_id,
+            session_id=request.session_id,
             step=2,
             question="What tone should your agent use?",
             options=["professional", "friendly", "casual", "empathetic"]
         )
     
-    elif session.current_step == 2:
-        session.tone = request.answer
-        session.current_step = 3
+    elif current_step == 2:
+        # Set agent tone
+        set_agent_tone(request.session_id, request.answer)
+        
         return AgentBuilderResponse(
-            session_id=session.session_id,
+            session_id=request.session_id,
             step=3,
             question="Any additional requirements or custom instructions for your agent? (Enter text or 'none')",
             options=None
         )
     
-    elif session.current_step == 3:
-        # Generate the agent
+    elif current_step == 3:
+        # Finalize the agent
         custom_requirements = request.answer if request.answer.lower() != "none" else ""
         
-        # Generate prompts
-        prompts = generate_agent_prompts(
-            session.business_type,
-            session.selected_features,
-            session.tone,
-            custom_requirements,
-            session.business_name
+        # Finalize agent with custom requirements
+        finalize_agent(
+            agent_id=request.session_id,
+            custom_requirements=custom_requirements,
+            contact_email="support@example.com",  # Default values
+            contact_phone="1-800-SUPPORT"
         )
         
-        # Create agent configuration
-        agent_config = {
-            "business_type": session.business_type,
-            "features": [feature.dict() for feature in session.selected_features],  # Convert Feature objects to dict
-            "tone": session.tone,
-            "custom_requirements": custom_requirements,
-            "prompts": prompts
-        }
-        
-        # Create and store the agent
-        agent_id = str(uuid.uuid4())
-        custom_agents[agent_id] = agent_config
-        
-        session.generated_config = agent_config
-        session.is_complete = True
-        
         return AgentBuilderResponse(
-            session_id=session.session_id,
+            session_id=request.session_id,
             step=3,
             question="Agent created successfully!",
             is_complete=True,
-            agent_id=agent_id
+            agent_id=request.session_id
         )
     
     raise HTTPException(status_code=400, detail="Invalid step")
 
 # API endpoints for feature management
-@app.get("/agent-builder/features/suggestions")  # Changed to GET
+@app.get("/agent-builder/features/suggestions")
 async def get_session_feature_suggestions(session_id: str):
     """Get current suggestions for the agent builder session"""
-    if session_id not in agent_builder_sessions:
+    agent_config = load_agent_config(session_id)
+    if not agent_config:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    state = agent_builder_sessions[session_id]
-    
-    # Convert Feature objects to dictionaries
     return {
         "session_id": session_id,
-        "current_step": state.current_step,
-        "business_type": state.business_type,
-        "business_context": state.business_context,
-        "suggested_features": [feature.dict() for feature in state.suggested_features],
-        "selected_features": [feature.dict() for feature in state.selected_features],
-        "custom_features": [feature.dict() for feature in state.custom_features],
-        "is_complete": state.is_complete,
-        "error": state.error
+        "current_step": agent_config.get("current_step", 0),
+        "business_type": agent_config.get("business_type", ""),
+        "business_context": agent_config.get("business_context", ""),
+        "suggested_features": agent_config.get("suggested_features", []),
+        "selected_features": agent_config.get("selected_features", []),
+        "custom_features": agent_config.get("custom_features", []),
+        "is_complete": agent_config.get("is_complete", False),
+        "error": agent_config.get("error")
     }
 
 @app.post("/agent-builder/features/add-suggested/{session_id}/{feature_id}")
 async def add_suggested_feature(session_id: str, feature_id: str):
     """Add a suggested feature to the selected features list"""
-    if session_id not in agent_builder_sessions:
+    agent_config = load_agent_config(session_id)
+    if not agent_config:
         raise HTTPException(status_code=404, detail="Session not found")
-    
-    state = agent_builder_sessions[session_id]
     
     # Find the suggested feature
     suggested_feature = None
-    for feature in state.suggested_features:
-        if feature.id == feature_id:
+    for feature in agent_config.get("suggested_features", []):
+        if feature["id"] == feature_id:
             suggested_feature = feature
             break
     
@@ -1570,72 +1667,87 @@ async def add_suggested_feature(session_id: str, feature_id: str):
         raise HTTPException(status_code=404, detail="Feature not found in suggestions")
     
     # Check if already selected
-    if any(f.id == feature_id for f in state.selected_features):
+    selected_features = agent_config.get("selected_features", [])
+    if any(f["id"] == feature_id for f in selected_features):
         raise HTTPException(status_code=400, detail="Feature already selected")
     
     # Add to selected features
-    state.selected_features.append(suggested_feature)
+    selected_features.append(suggested_feature)
+    agent_config["selected_features"] = selected_features
+    save_agent_config(session_id, agent_config)
     
     return {
         "success": True,
-        "selected_features": [feature.dict() for feature in state.selected_features],
-        "message": f"Added {suggested_feature.name} to your agent"
+        "selected_features": selected_features,
+        "message": f"Added {suggested_feature['name']} to your agent"
     }
 
 @app.post("/agent-builder/features/add-custom")
 async def add_custom_feature(request: CustomFeatureRequest):
     """Add a custom feature to the agent"""
-    if request.session_id not in agent_builder_sessions:
+    agent_config = load_agent_config(request.session_id)
+    if not agent_config:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    state = agent_builder_sessions[request.session_id]
-    
     # Create custom feature
-    custom_feature = Feature(
-        id=f"custom_{len(state.custom_features) + 1}",
-        name=request.feature_name,
-        description=request.feature_description,
-            priority=FeaturePriority.MEDIUM,
-        is_custom=True
-    )
+    custom_feature = {
+        "id": f"custom_{len(agent_config.get('custom_features', []))}",
+        "name": request.feature_name,
+        "description": request.feature_description,
+        "priority": "MEDIUM",
+        "is_custom": True
+    }
     
     # Check if feature name already exists
-    all_features = state.selected_features + state.custom_features
-    if any(f.name.lower() == request.feature_name.lower() for f in all_features):
+    all_features = agent_config.get("selected_features", []) + agent_config.get("custom_features", [])
+    if any(f["name"].lower() == request.feature_name.lower() for f in all_features):
         raise HTTPException(status_code=400, detail="Feature with this name already exists")
     
-    state.custom_features.append(custom_feature)
+    # Add to custom features
+    custom_features = agent_config.get("custom_features", [])
+    custom_features.append(custom_feature)
+    agent_config["custom_features"] = custom_features
+    save_agent_config(request.session_id, agent_config)
     
     return {
         "success": True,
-        "custom_features": [feature.dict() for feature in state.custom_features],
+        "custom_features": custom_features,
         "message": f"Added custom feature: {request.feature_name}"
     }
 
 @app.post("/agent-builder/features/remove/{session_id}/{feature_id}")
 async def remove_feature(session_id: str, feature_id: str):
     """Remove a feature from selected or custom features"""
-    if session_id not in agent_builder_sessions:
+    agent_config = load_agent_config(session_id)
+    if not agent_config:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    state = agent_builder_sessions[session_id]
-    
     # Remove from selected features
-    state.selected_features = [f for f in state.selected_features if f.id != feature_id]
+    selected_features = [
+        f for f in agent_config.get("selected_features", [])
+        if f["id"] != feature_id
+    ]
+    agent_config["selected_features"] = selected_features
     
     # Remove from custom features
-    state.custom_features = [f for f in state.custom_features if f.id != feature_id]
+    custom_features = [
+        f for f in agent_config.get("custom_features", [])
+        if f["id"] != feature_id
+    ]
+    agent_config["custom_features"] = custom_features
+    
+    save_agent_config(session_id, agent_config)
     
     return {
         "success": True,
-        "selected_features": [feature.dict() for feature in state.selected_features],
-        "custom_features": [feature.dict() for feature in state.custom_features],
+        "selected_features": selected_features,
+        "custom_features": custom_features,
         "message": "Feature removed successfully"
     }
 
 @app.post("/custom-agent/query", response_model=SupportResponse)
 async def query_custom_agent(request: CustomAgentQuery):
-    agent_config = custom_agents.get(request.agent_id)
+    agent_config = load_agent_config(request.agent_id)
     if not agent_config:
         raise HTTPException(status_code=404, detail="Custom agent not found")
     
@@ -1665,16 +1777,96 @@ async def query_custom_agent(request: CustomAgentQuery):
 async def list_custom_agents():
     """List all created custom agents"""
     return {
-        "agents": [
-            {
-                "id": agent_id,
-                "business_type": config["business_type"],
-                "features": config["features"],
-                "tone": config["tone"]
-            }
-            for agent_id, config in custom_agents.items()
-        ]
+        "agents": list_agents()
     }
+
+@app.post("/voice/start-interaction")
+async def start_voice_interaction(request: VoiceInteractionRequest):
+    """Start a voice interaction by recording user's voice"""
+    try:
+        # Record audio
+        audio_buffer = record_audio(duration=request.duration)
+        
+        # Transcribe audio to text
+        user_text = transcribe_audio(audio_buffer)
+        
+        # Process query using appropriate agent
+        if request.agent_id:
+            # Use custom agent
+            agent_config = load_agent_config(request.agent_id)
+            if not agent_config:
+                raise HTTPException(status_code=404, detail="Custom agent not found")
+            
+            custom_workflow = create_custom_agent(agent_config)
+            state = State(query=user_text)
+            result = custom_workflow.invoke(state)
+            response_text = result["response"]
+        else:
+            # Use default agent
+            state = State(query=user_text)
+            result = chain.invoke(state)
+            response_text = result["response"]
+        
+        # Generate audio response
+        audio_buffer = generate_audio(response_text)
+        
+        # Return both text and audio
+        return StreamingResponse(
+            audio_buffer,
+            media_type="audio/mp3",
+            headers={
+                "X-Text-Response": response_text
+            }
+        )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing voice interaction: {str(e)}")
+
+@app.post("/voice/upload")
+async def upload_voice(
+    file: UploadFile = File(...),
+    agent_id: Optional[str] = None
+):
+    """Handle uploaded voice file"""
+    try:
+        # Read uploaded file
+        contents = await file.read()
+        audio_buffer = BytesIO(contents)
+        
+        # Transcribe audio to text
+        user_text = transcribe_audio(audio_buffer)
+        
+        # Process query using appropriate agent
+        if agent_id:
+            # Use custom agent
+            agent_config = load_agent_config(agent_id)
+            if not agent_config:
+                raise HTTPException(status_code=404, detail="Custom agent not found")
+            
+            custom_workflow = create_custom_agent(agent_config)
+            state = State(query=user_text)
+            result = custom_workflow.invoke(state)
+            response_text = result["response"]
+        else:
+            # Use default agent
+            state = State(query=user_text)
+            result = chain.invoke(state)
+            response_text = result["response"]
+        
+        # Generate audio response
+        audio_buffer = generate_audio(response_text)
+        
+        # Return both text and audio
+        return StreamingResponse(
+            audio_buffer,
+            media_type="audio/mp3",
+            headers={
+                "X-Text-Response": response_text
+            }
+        )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing voice file: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

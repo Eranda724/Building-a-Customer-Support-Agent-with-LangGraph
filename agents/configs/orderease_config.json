@@ -1,0 +1,71 @@
+{
+  "business_name": "OrderEase AI",
+  "business_type": "food_service",
+  "description": "OrderEase AI is a food service platform providing various meal options throughout the day.",
+  "features": [
+    {
+      "id": "menu",
+      "name": "Menu Information",
+      "description": "View available meals and prices"
+    },
+    {
+      "id": "ordering",
+      "name": "Order Management",
+      "description": "Place and track food orders"
+    },
+    {
+      "id": "support",
+      "name": "General Support",
+      "description": "General inquiries and assistance"
+    }
+  ],
+  "contact_info": {
+    "phone": "123456789",
+    "email": "support@orderease.ai",
+    "hours": "Mon-Sat: 7AM-10PM"
+  },
+  "menu_items": [
+    {
+      "name": "Breakfast Special",
+      "price": 7.99,
+      "description": "Scrambled eggs, toast, and a side of fruit",
+      "category": "breakfast"
+    },
+    {
+      "name": "Lunch Combo",
+      "price": 10.99,
+      "description": "Your choice of sandwich, a side of chips, and a drink",
+      "category": "lunch"
+    },
+    {
+      "name": "Dinner Delight",
+      "price": 12.99,
+      "description": "A main dish (chicken, beef, or fish), rice, and vegetables",
+      "category": "dinner"
+    },
+    {
+      "name": "Veggie Delight",
+      "price": 9.99,
+      "description": "A vegetarian main dish, salad, and a side of bread",
+      "category": "vegetarian"
+    },
+    {
+      "name": "Kids Meal",
+      "price": 6.99,
+      "description": "Mini burger, fries, and a small drink",
+      "category": "kids"
+    },
+    {
+      "name": "Healthy Option",
+      "price": 11.99,
+      "description": "Grilled chicken breast, quinoa, and steamed vegetables",
+      "category": "healthy"
+    }
+  ],
+  "tone": "professional_friendly",
+  "custom_requirements": "For unmatched queries or special requests, provide contact information",
+  "prompts": {
+    "categorize": "Categorize this query into: Menu, Orders, Support, or Other. Query: {query}",
+    "response": "You are a customer service agent for OrderEase AI. Provide information about {query_topic}. Include relevant details from our menu, prices, and services. Be friendly and helpful. If the query is outside our standard services, provide our contact information. Query: {query}"
+  }
+} 

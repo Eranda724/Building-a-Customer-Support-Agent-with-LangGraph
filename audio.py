@@ -30,9 +30,9 @@ groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # Initialize ChatGroq for LangChain
 llm = ChatGroq(
-    model="llama3-8b-8192",  # You can also use "mixtral-8x7b-32768" or "gemma-7b-it"
+    model="llama3-8b-8192",
     temperature=0.7,
-    groq_api_key=os.getenv("GROQ_API_KEY")
+    api_key=os.getenv("GROQ_API_KEY")
 )
 
 class UserDetails(BaseModel):
@@ -41,7 +41,7 @@ class UserDetails(BaseModel):
     email: str = Field(description="The user's email address")
     phone_number: str = Field(description="The user's phone number")
 
-def generate_audio(text: str, model: str = "eleven_multilingual_v2") -> BytesIO:
+def generate_audio(text: str, model: str = "eleven_multilingual_v2") -> None:
     """
     Generate audio from text using ElevenLabs API.
     """
@@ -83,7 +83,7 @@ class State(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
     agent_queries: list[str]
     user_details: list[dict[str, str]]
-    tech_stack_details: Optional[list[dict[str, str]]] = None
+    tech_stack_details: Optional[list[dict[str, str]]]
 
 def speak_and_listen(agent_prompt: str, record_duration=10) -> str:
     """
@@ -91,7 +91,7 @@ def speak_and_listen(agent_prompt: str, record_duration=10) -> str:
     """
     # Generate agent audio
     print(f"Agent Prompt: {agent_prompt}")
-    audio = generate_audio(agent_prompt)
+    generate_audio(agent_prompt)
     # Record user response
     user_audio = record_user_input(record_duration)
     # Transcribe user response
@@ -108,11 +108,11 @@ def greet_node(state: State) -> State:
     # Add agent's message to state
     state["messages"].append(AIMessage(content=res.content))
     # Speak and listen using the agent's response
-    user_response = speak_and_listen(res.content, record_duration=3)  # Adjust duration as needed
+    user_response = speak_and_listen(str(res.content), record_duration=3)  # Adjust duration as needed
     # Add user response to state
     state["messages"].append(HumanMessage(content=user_response))
     print("state[messages] in greet node --> ",state["messages"])
-    return {'messages': state['messages']}
+    return state
 
 def gather_personal_details_node(state: State) -> State:
     """
@@ -123,7 +123,7 @@ def gather_personal_details_node(state: State) -> State:
     # Add agent's message to state
     state["messages"].append(AIMessage(content=res.content))
     # Speak and listen using the agent's response
-    user_response = speak_and_listen(res.content)
+    user_response = speak_and_listen(str(res.content))
     # Add user response to state
     state["messages"].append(HumanMessage(content=user_response))
     print("state[messages] in gather personal details node --> ",state["messages"])
@@ -133,7 +133,8 @@ def gather_personal_details_node(state: State) -> State:
     user_info = llm.with_structured_output(UserDetails).invoke([HumanMessage(content=user_info_prompt)])
     print("Extracted User Details: ", user_info)
     # Add user details to state
-    return {'user_details': user_info}
+    state["user_details"] = [user_info.model_dump()]
+    return state
 
 def get_tech_stack():
     with open('tech_required.txt', 'r') as file:
@@ -144,13 +145,13 @@ def get_tech_stack():
     print(f"Tech Required: {tech_required}", f"Cloud Required: {cloud_required}", f"Orchestration Required: {orchestration_required}", sep='\n')
     return tech_required, cloud_required, orchestration_required
 
-class TechStackDetails(TypedDict):
+class TechStackDetails(BaseModel):
     """
     User's technology stack details.
     """
-    tech_stack: Annotated[str, ..., "The name of the technology (e.g., Spark)"]
-    rating: Annotated[str, ..., "User's self-assessed rating for this technology"]
-    explanation: Annotated[str, ..., "User's explanation of their experience with this technology"]
+    tech_stack: str = Field(description="The name of the technology (e.g., Spark)")
+    rating: str = Field(description="User's self-assessed rating for this technology")
+    explanation: str = Field(description="User's explanation of their experience with this technology")
 
 class TechStackDetailsList(BaseModel):
     items: List[TechStackDetails] = Field(
@@ -177,10 +178,10 @@ def fetch_user_tech_stack_node(state: State) -> State:
     # Assume LLM returns a list of 3 questions as text, parse it
     import ast
     try:
-        questions = ast.literal_eval(llm_questions_res.content)
+        questions = ast.literal_eval(str(llm_questions_res.content))
     except Exception:
         # fallback: split by newlines if not a list
-        questions = [q.strip() for q in llm_questions_res.content.split('\n') if q.strip()]
+        questions = [q.strip() for q in str(llm_questions_res.content).split('\n') if q.strip()]
 
     # 2. Iterate over questions, ask user, collect responses
     user_responses = []
@@ -200,8 +201,9 @@ def fetch_user_tech_stack_node(state: State) -> State:
     print("Extracted Tech Stack Details: ", tech_stack_details)
     # Add to state
     with open("user_tech_stack.json", "w") as f:
-        json.dump(tech_stack_details.dict(), f, indent=2)
-    return {"tech_stack_details": tech_stack_details}
+        json.dump(tech_stack_details.model_dump(), f, indent=2)
+    state["tech_stack_details"] = [item.model_dump() for item in tech_stack_details.items]
+    return state
 
 def greet_bye(state: State) -> State:
     """
@@ -212,11 +214,11 @@ def greet_bye(state: State) -> State:
     # Add agent's message to state
     state["messages"].append(AIMessage(content=res.content))
     # Speak and listen using the agent's response
-    user_response = speak_and_listen(res.content)
+    user_response = speak_and_listen(str(res.content))
     # Add user response to state
     state["messages"].append(HumanMessage(content=user_response))
     print("state[messages] in greet bye node --> ",state["messages"])
-    return {'messages': state['messages']}
+    return state
 
 def build_hr_agent_graph():
     graph = StateGraph(State)
@@ -239,4 +241,4 @@ def build_hr_agent_graph():
 if __name__ == "__main__":
     graph = build_hr_agent_graph()
     chain = graph.compile()
-    chain.invoke(State(messages=[], agent_queries=[], user_details=[]))
+    chain.invoke(State(messages=[], agent_queries=[], user_details=[], tech_stack_details=None))
