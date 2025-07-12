@@ -1,0 +1,22 @@
+{
+  "business_type": "ecommerce",
+  "business_name": "kkejd",
+  "business_purpose": "new",
+  "business_description": "new",
+  "custom_features": [],
+  "tone": "professional",
+  "custom_requirements": "",
+  "contact_info": {
+    "email": "",
+    "phone": ""
+  },
+  "current_step": 1,
+  "is_complete": false,
+  "metadata": {
+    "created_at": "2025-07-11T13:03:39.888890",
+    "last_modified": "2025-07-11T13:03:39.888890",
+    "agent_id": "067acead-efc7-4479-8bf0-9c09f3bd2672"
+  },
+  "business_context": "kkejd is a new ecommerce business. It involves the online selling of products, which implies a need for robust customer support to handle inquiries, returns, and order tracking.",
+  "suggested_features": [
+    

@@ -1,0 +1,79 @@
+{
+  "business_type": "food_delivery",
+  "business_name": "food deliver system",
+  "business_purpose": "food deliver system",
+  "business_description": "food deliver system",
+  "custom_features": [],
+  "tone": "professional",
+  "custom_requirements": "",
+  "contact_info": {
+    "email": "",
+    "phone": ""
+  },
+  "current_step": 1,
+  "is_complete": false,
+  "metadata": {
+    "created_at": "2025-07-11T14:10:54.653156",
+    "last_modified": "2025-07-11T14:10:54.653156",
+    "agent_id": "9dea7f9d-1845-44cd-a562-1eb09f2992ad"
+  },
+  "business_context": "Food deliver system is a platform that facilitates the delivery of food from restaurants to customers. It connects users with various food providers and manages the logistics of food delivery.",
+  "suggested_features": [
+    {
+      "id": "order_tracking",
+      "name": "Order Tracking",
+      "description": "Allows customers to track the status and location of their food delivery in real-time",
+      "priority": "high",
+      "is_custom": false
+    },
+    {
+      "id": "restaurant_listing",
+      "name": "Restaurant Listing",
+      "description": "Provides a comprehensive list of restaurants available on the platform, including menus and ratings",
+      "priority": "high",
+      "is_custom": false
+    },
+    {
+      "id": "delivery_estimated_time",
+      "name": "Estimated Delivery Time",
+      "description": "Informs customers about the estimated time of delivery for their orders",
+      "priority": "high",
+      "is_custom": false
+    },
+    {
+      "id": "order_history",
+      "name": "Order History",
+      "description": "Allows customers to view their past orders and reorder items easily",
+      "priority": "medium",
+      "is_custom": false
+    },
+    {
+      "id": "payment_options",
+      "name": "Multiple Payment Options",
+      "description": "Supports various payment methods including credit card, debit card, mobile wallets, and cash on delivery",
+      "priority": "medium",
+      "is_custom": false
+    },
+    {
+      "id": "customer_reviews",
+      "name": "Customer Reviews",
+      "description": "Allows customers to leave reviews and ratings for restaurants and delivery personnel",
+      "priority": "low",
+      "is_custom": false
+    }
+  ],
+  "key_terms": [
+    "food",
+    "delivery",
+    "restaurant",
+    "order",
+    "tracking"
+  ],
+  "interaction_points": [
+    "order_placement",
+    "order_tracking",
+    "delivery_status",
+    "payment_issues",
+    "order_cancellation"
+  ]
+}

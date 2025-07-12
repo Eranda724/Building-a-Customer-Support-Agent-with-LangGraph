@@ -1,0 +1,20 @@
+{
+  "business_type": "custom",
+  "business_name": "Temporary Business Name",
+  "business_purpose": "Temporary Purpose",
+  "business_description": "Temporary Description",
+  "custom_features": [],
+  "tone": "professional",
+  "custom_requirements": "",
+  "contact_info": {
+    "email": "",
+    "phone": ""
+  },
+  "current_step": 1,
+  "is_complete": false,
+  "metadata": {
+    "created_at": "2025-07-11T10:19:18.937065",
+    "last_modified": "2025-07-11T10:19:18.937065",
+    "agent_id": "0acf2d41-15a2-4aeb-9c37-8b378aa0c46b"
+  }
+}

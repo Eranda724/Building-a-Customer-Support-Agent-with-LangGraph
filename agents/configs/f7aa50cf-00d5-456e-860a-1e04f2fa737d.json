@@ -1,0 +1,22 @@
+{
+  "business_type": "custom",
+  "business_name": "ticket booking agent",
+  "business_purpose": "user can call and book their ticket easiky",
+  "business_description": "user can call and book their ticket easiky",
+  "custom_features": [],
+  "tone": "professional",
+  "custom_requirements": "",
+  "contact_info": {
+    "email": "",
+    "phone": ""
+  },
+  "current_step": 1,
+  "is_complete": false,
+  "metadata": {
+    "created_at": "2025-07-11T12:59:55.165505",
+    "last_modified": "2025-07-11T12:59:55.165505",
+    "agent_id": "f7aa50cf-00d5-456e-860a-1e04f2fa737d"
+  },
+  "business_context": "Business providing ticket booking agent services",
+  "suggested_features": [
+    

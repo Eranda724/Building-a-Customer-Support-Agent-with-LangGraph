@@ -1,0 +1,86 @@
+{
+  "business_type": "food_delivery",
+  "business_name": "food deliver system",
+  "business_purpose": "food deliver system",
+  "business_description": "food deliver system",
+  "custom_features": [],
+  "tone": "professional",
+  "custom_requirements": "",
+  "contact_info": {
+    "email": "",
+    "phone": ""
+  },
+  "current_step": 1,
+  "is_complete": false,
+  "metadata": {
+    "created_at": "2025-07-11T14:10:31.009940",
+    "last_modified": "2025-07-11T14:10:31.009940",
+    "agent_id": "e0ffe234-58fa-4f2f-b4ba-964b3bd5ccfb"
+  },
+  "business_context": "Food Deliver System specializes in delivering food from various restaurants to customers' doorsteps. Their primary focus is on providing a seamless and efficient food delivery service.",
+  "suggested_features": [
+    {
+      "id": "order_tracking",
+      "name": "Order Tracking",
+      "description": "Allows customers to track their food order in real-time from the kitchen to their doorstep.",
+      "priority": "high",
+      "is_custom": false
+    },
+    {
+      "id": "order_history",
+      "name": "Order History",
+      "description": "Enables customers to view their past orders and reorder easily.",
+      "priority": "high",
+      "is_custom": false
+    },
+    {
+      "id": "restaurant_search",
+      "name": "Restaurant Search",
+      "description": "Allows customers to search for and filter restaurants based on various criteria such as cuisine, location, and rating.",
+      "priority": "medium",
+      "is_custom": false
+    },
+    {
+      "id": "delivery_schedule",
+      "name": "Delivery Schedule",
+      "description": "Provides options for customers to schedule deliveries for a later time or date.",
+      "priority": "medium",
+      "is_custom": false
+    },
+    {
+      "id": "customer_reviews",
+      "name": "Customer Reviews",
+      "description": "Allows customers to read and write reviews for the restaurants and delivery service.",
+      "priority": "low",
+      "is_custom": false
+    },
+    {
+      "id": "emergency_support",
+      "name": "Emergency Support",
+      "description": "Provides a dedicated support channel for urgent issues such as missing orders or delivery issues.",
+      "priority": "high",
+      "is_custom": false
+    },
+    {
+      "id": "feedback_form",
+      "name": "Feedback Form",
+      "description": "Allows customers to provide feedback on their delivery experience.",
+      "priority": "low",
+      "is_custom": false
+    }
+  ],
+  "key_terms": [
+    "food",
+    "delivery",
+    "restaurant",
+    "order",
+    "tracking"
+  ],
+  "interaction_points": [
+    "order_placement",
+    "order_tracking",
+    "delivery_issues",
+    "feedback_provision",
+    "order_history"
+  ]
+}
