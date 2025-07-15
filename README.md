@@ -10,6 +10,15 @@ A powerful FastAPI application that allows businesses to create and customize th
 - **Flexible Tone Settings**: Choose from professional, friendly, casual, or empathetic communication styles
 - **Real-time Testing**: Test your custom agent immediately after creation
 
+<img width="1165" height="860" alt="1" src="https://github.com/user-attachments/assets/898263b9-d12d-4a97-8658-c43d35d044f6" />
+
+![2](https://github.com/user-attachments/assets/7476bdce-6e4c-4f67-8f81-c1e6004e0493)
+![3](https://github.com/user-attachments/assets/d8741b48-13ca-4c90-bcbb-efe3c4cb0cc3)
+![4](https://github.com/user-attachments/assets/64daf43b-f9c4-43ad-9665-1f767aac9afe)
+![5](https://github.com/user-attachments/assets/988b0e01-d77e-45d0-be9c-b734a6177019)
+![6](https://github.com/user-attachments/assets/bf99bdff-2b50-46fd-9bd1-73515e5fb25c)
+![7](https://github.com/user-attachments/assets/49fc2684-34e4-4d0b-98b6-d8ae47aa04ea)
+
 ## 🛠️ Technology Stack
 
 - **Backend**: FastAPI
