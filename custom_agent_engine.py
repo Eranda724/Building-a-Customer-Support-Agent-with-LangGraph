@@ -5,6 +5,7 @@ from langchain_groq import ChatGroq
 from pydantic import BaseModel, SecretStr
 from langgraph.graph import StateGraph, END
 import re
+import os
 
 class State(BaseModel):
     query: str
@@ -38,9 +39,14 @@ def build_agent_workflow(config: Dict[str, Any], llm: Optional[ChatGroq] = None)
     """Build a reusable agent workflow from configuration"""
     
     if llm is None:
+        # Get API key from environment
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise ValueError("GROQ_API_KEY not found in environment variables")
+        
         llm = ChatGroq(
             temperature=0.7,
-            api_key=SecretStr(config.get("api_key", "")),
+            api_key=api_key,
             model="mistral-saba-24b"
         )
 

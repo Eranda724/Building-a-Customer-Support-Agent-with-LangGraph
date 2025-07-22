@@ -23,7 +23,7 @@ def save_agent_config(agent_id: str, config: Dict[str, Any]) -> None:
     """Save agent configuration to JSON file"""
     ensure_directory_exists()
     config["last_modified"] = datetime.now().isoformat()
-    
+   
     file_path = os.path.join(AGENTS_DIR, f"{agent_id}.json")
     with open(file_path, 'w') as f:
         json.dump(config, f, indent=2)
@@ -42,7 +42,7 @@ def update_agent_config(agent_id: str, updates: Dict[str, Any]) -> bool:
     config = load_agent_config(agent_id)
     if not config:
         return False
-    
+   
     config.update(updates)
     config["last_modified"] = datetime.now().isoformat()
     save_agent_config(agent_id, config)
