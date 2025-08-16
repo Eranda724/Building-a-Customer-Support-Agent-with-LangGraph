@@ -1,9 +1,11 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, Field
+from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel, Field, SecretStr
 from typing import Dict, Any, List, Optional
+from langchain_groq import ChatGroq
 import uuid
+import json
 from datetime import datetime
 import os
 from dotenv import load_dotenv
@@ -23,12 +25,59 @@ from agent_storage import (
 # Load environment variables
 load_dotenv()
 
+# Get API key and validate
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+if not GROQ_API_KEY:
+    raise ValueError(
+        "GROQ_API_KEY not found in environment variables. "
+        "Please create a .env file with your Groq API key (GROQ_API_KEY=gsk_...)"
+    )
+
+if not GROQ_API_KEY.startswith("gsk_"):
+    raise ValueError(
+        "Invalid GROQ_API_KEY format. "
+        "The key should start with 'gsk_'. "
+        "Please check your API key at https://console.groq.com/"
+    )
+
+# Initialize LLM with proper API key
+llm = ChatGroq(
+    temperature=0.7,
+    api_key=GROQ_API_KEY,
+    model="mistral-saba-24b")
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Customer Support Agent API",
     description="AI-powered customer support system",
     version="1.0.0"
 )
+
+# Add error handling middleware
+@app.middleware("http")
+async def handle_exceptions(request, call_next):
+    try:
+        return await call_next(request)
+    except ValueError as e:
+        if "GROQ_API_KEY" in str(e):
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "detail": str(e),
+                    "help": "Please check your .env file and ensure you have added your Groq API key correctly."
+                }
+            )
+        raise
+    except Exception as e:
+        if "invalid_api_key" in str(e).lower():
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "detail": "Invalid Groq API key. Please check your .env file and ensure your API key is correct.",
+                    "help": "Get your API key from https://console.groq.com/"
+                }
+            )
+        raise
 
 # Configure CORS
 app.add_middleware(
