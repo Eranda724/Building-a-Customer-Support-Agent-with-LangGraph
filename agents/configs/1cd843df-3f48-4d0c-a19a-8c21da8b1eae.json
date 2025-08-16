@@ -1,0 +1,58 @@
+{
+  "business_name": "DineAssist: Calling Agent for Food Delivery System",
+  "business_description": "Description: DineAssist is an intelligent, automated calling agent designed to enhance the customer experience for your food delivery system. It handles customer inquiries, orders, and support requests, providing a seamless and efficient communication channel between customers and your delivery service.",
+  "business_type": "default",
+  "features": [
+    {
+      "id": "general_support",
+      "name": "General Support",
+      "description": "Support for general support",
+      "priority": "medium"
+    },
+    {
+      "id": "contact_management",
+      "name": "Contact Management",
+      "description": "Support for contact management",
+      "priority": "medium"
+    },
+    {
+      "id": "custom_0",
+      "name": "Custom 0",
+      "description": "Support for custom 0",
+      "priority": "medium"
+    },
+    {
+      "id": "custom_0",
+      "name": "Custom 0",
+      "description": "Support for custom 0",
+      "priority": "medium"
+    }
+  ],
+  "custom_features": [
+    {
+      "id": "custom_0",
+      "name": "prices",
+      "description": "rice : 100\nnoodles : 200",
+      "priority": "medium",
+      "is_custom": true
+    }
+  ],
+  "tone": "friendly",
+  "prompts": {
+    "categorize": "Categorize this customer query into one of: Technical, Billing, General. Query: {query}",
+    "sentiment": "Analyze the sentiment of this query as positive, negative, or neutral. Query: {query}",
+    "handle_technical": "Provide a {tone} technical support response. Query: {query}",
+    "handle_billing": "Provide a {tone} response about billing or payment. Query: {query}",
+    "general": "Provide a {tone} response to this general query. Query: {query}",
+    "escalate": "I understand this requires special attention. A support representative will contact you shortly."
+  },
+  "created_at": "2025-07-15T16:02:19.815066",
+  "last_modified": "2025-07-15T16:04:04.253836",
+  "current_step": 4,
+  "is_complete": true,
+  "custom_requirements": "get user question and give response about you know",
+  "contact_info": {
+    "email": "support@example.com",
+    "phone": "1-800-SUPPORT"
+  }
+}

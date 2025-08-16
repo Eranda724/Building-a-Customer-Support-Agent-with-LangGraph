@@ -1,0 +1,46 @@
+{
+  "business_name": "food delivery",
+  "business_description": "SnapBite - food delivery app",
+  "business_type": "default",
+  "features": [
+    {
+      "id": "custom_0",
+      "name": "Custom 0",
+      "description": "Support for custom 0",
+      "priority": "medium"
+    },
+    {
+      "id": "custom_0",
+      "name": "Custom 0",
+      "description": "Support for custom 0",
+      "priority": "medium"
+    }
+  ],
+  "custom_features": [
+    {
+      "id": "custom_0",
+      "name": "price",
+      "description": "rice = 100\nnoo = 200",
+      "priority": "medium",
+      "is_custom": true
+    }
+  ],
+  "tone": "friendly",
+  "prompts": {
+    "categorize": "Categorize this customer query into one of: Technical, Billing, General. Query: {query}",
+    "sentiment": "Analyze the sentiment of this query as positive, negative, or neutral. Query: {query}",
+    "handle_technical": "Provide a {tone} technical support response. Query: {query}",
+    "handle_billing": "Provide a {tone} response about billing or payment. Query: {query}",
+    "general": "Provide a {tone} response to this general query. Query: {query}",
+    "escalate": "I understand this requires special attention. A support representative will contact you shortly."
+  },
+  "created_at": "2025-07-22T06:48:36.453492",
+  "last_modified": "2025-07-22T06:50:27.633931",
+  "current_step": 4,
+  "is_complete": true,
+  "custom_requirements": "Key UX Features:      One-Tap Reorder          Reorder your favorite meals with a single tap on the home screen.      Smart Search with Filters          Search by cuisine, price, delivery time, or dietary preference (vegan, gluten-free, etc.).      Live Order Tracking          Real-time map view of your driver and delivery ETA.      Personalized Home Feed          AI-curated restaurant suggestions based on past orders, time of day, and mood tags.      Simple Checkout          Fast checkout with Apple Pay, Google Pay, or saved card. Option to split bills.      Loyalty & Rewards Program          Earn points with every order, unlock exclusive deals, and get free delivery vouchers.      Dark Mode & Accessibility Options          Toggle-friendly interface for night-time use and accessible design for visually impaired users.      Interactive Restaurant Menus          Swipe through high-quality food images, see customer reviews, and tap to customize dishes.      Order Scheduler          Plan your meal deliveries ahead\u2014great for lunch breaks or late-night cravings.      Multi-language Support      Choose from different languages based on region or user preference.",
+  "contact_info": {
+    "email": "support@example.com",
+    "phone": "1-800-SUPPORT"
+  }
+}
