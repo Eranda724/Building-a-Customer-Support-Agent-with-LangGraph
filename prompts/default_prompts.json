@@ -1,28 +1,47 @@
 {
-    "fitness_and_wellness": {
-        "categorize": "Categorize this customer query into one of: Schedule, Pricing, Location, General. Consider the fitness/wellness context. Query: {query}",
-        "sentiment": "Analyze the sentiment of this fitness/wellness related query as positive, negative, or neutral. Query: {query}",
-        "handle_schedule": "Provide a {tone} response about scheduling fitness sessions. Consider available trainers and locations. Query: {query}",
-        "handle_pricing": "Provide a {tone} response about our fitness packages and pricing options. Query: {query}",
-        "handle_location": "Provide a {tone} response about our training locations and facilities. Query: {query}",
-        "general": "Provide a {tone} response to this fitness/wellness query, focusing on health and motivation. Query: {query}",
-        "escalate": "I understand this requires special attention. A fitness specialist will contact you shortly to address your concerns."
-    },
-    "ecommerce": {
-        "categorize": "Categorize this customer query into one of: Order, Product, Payment, General. Consider the e-commerce context. Query: {query}",
-        "sentiment": "Analyze the sentiment of this e-commerce related query as positive, negative, or neutral. Query: {query}",
-        "handle_order": "Provide a {tone} response about order status or tracking. Query: {query}",
-        "handle_product": "Provide a {tone} response about product details and availability. Query: {query}",
-        "handle_payment": "Provide a {tone} response about payment options and issues. Query: {query}",
-        "general": "Provide a {tone} response to this e-commerce query, focusing on customer satisfaction. Query: {query}",
-        "escalate": "I understand this requires special attention. Our customer service team will contact you shortly to resolve your concerns."
-    },
-    "default": {
-        "categorize": "Categorize this customer query into one of: Technical, Billing, General. Query: {query}",
-        "sentiment": "Analyze the sentiment of this query as positive, negative, or neutral. Query: {query}",
-        "handle_technical": "Provide a {tone} technical support response. Query: {query}",
-        "handle_billing": "Provide a {tone} response about billing or payment. Query: {query}",
-        "general": "Provide a {tone} response to this general query. Query: {query}",
-        "escalate": "I understand this requires special attention. A support representative will contact you shortly."
-    }
-} 
+  "fitness_and_wellness": {
+    "categorize": "Categorize this customer query into one of: Schedule, Pricing, Location, General. Consider the fitness/wellness context. Query: {query}",
+    "sentiment": "Analyze the sentiment of this fitness/wellness related query as positive, negative, or neutral. Query: {query}",
+    "handle_schedule": "Provide a {tone} response about scheduling fitness sessions. Consider available trainers and locations. Query: {query}",
+    "handle_pricing": "Provide a {tone} response about our fitness packages and pricing options. Query: {query}",
+    "handle_location": "Provide a {tone} response about our training locations and facilities. Query: {query}",
+    "general": "Provide a {tone} response to this fitness/wellness query, focusing on health and motivation. Query: {query}",
+    "escalate": "I understand this requires special attention. A fitness specialist will contact you shortly to address your concerns."
+  },
+  "ecommerce": {
+    "categorize": "Categorize this customer query into one of: Order, Product, Payment, General. Consider the e-commerce context. Query: {query}",
+    "sentiment": "Analyze the sentiment of this e-commerce related query as positive, negative, or neutral. Query: {query}",
+    "handle_order": "Provide a {tone} response about order status or tracking. Query: {query}",
+    "handle_product": "Provide a {tone} response about product details and availability. Query: {query}",
+    "handle_payment": "Provide a {tone} response about payment options and issues. Query: {query}",
+    "general": "Provide a {tone} response to this e-commerce query, focusing on customer satisfaction. Query: {query}",
+    "escalate": "I understand this requires special attention. Our customer service team will contact you shortly to resolve your concerns."
+  },
+  "food_delivery": {
+    "categorize": "Categorize this customer query into one of: Menu, Pricing, Order, Delivery, General. Consider the food delivery context. Query: {query}",
+    "sentiment": "Analyze the sentiment of this food delivery related query as positive, negative, or neutral. Query: {query}",
+    "handle_menu": "Provide a {tone} response about our menu items and availability. Use the business description to reference specific dishes and ingredients. Query: {query}",
+    "handle_pricing": "Provide a {tone} response about our pricing and delivery fees. Use the business description to reference specific prices and deals. Query: {query}",
+    "handle_order": "Provide a {tone} response about placing or modifying orders. Query: {query}",
+    "handle_delivery": "Provide a {tone} response about delivery times, areas, and tracking. Query: {query}",
+    "general": "Provide a {tone} response to this food delivery query, focusing on customer satisfaction and food quality. Query: {query}",
+    "escalate": "I understand this requires special attention. Our restaurant support team will contact you shortly to resolve your concerns."
+  },
+  "universal": {
+    "categorize": "Categorize this customer query into one of: Information, Support, Issues, General. Consider the context from the business description. Query: {query}",
+    "sentiment": "Analyze the sentiment of this query as positive, negative, or neutral. Query: {query}",
+    "handle_information": "Provide a {tone} response with information based on the business context. Use the business description to provide accurate details. Query: {query}",
+    "handle_support": "Provide a {tone} support response addressing the customer's needs. Query: {query}",
+    "handle_issues": "Provide a {tone} response addressing any issues or problems. Query: {query}",
+    "general": "Provide a {tone} response to this general query based on the business context. Query: {query}",
+    "escalate": "I understand this requires special attention. A support representative will contact you shortly."
+  },
+  "default": {
+    "categorize": "Categorize this customer query into one of: Technical, Billing, General. Query: {query}",
+    "sentiment": "Analyze the sentiment of this query as positive, negative, or neutral. Query: {query}",
+    "handle_technical": "Provide a {tone} technical support response. Query: {query}",
+    "handle_billing": "Provide a {tone} response about billing or payment. Query: {query}",
+    "general": "Provide a {tone} response to this general query. Query: {query}",
+    "escalate": "I understand this requires special attention. A support representative will contact you shortly."
+  }
+}

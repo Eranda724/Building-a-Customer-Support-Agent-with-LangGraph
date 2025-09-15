@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>AI Support Agent Builder</title>
+    <style>
+      :root {
+        --primary-color: #2563eb;
+        --secondary-color: #1e40af;
+        --background-color: #f8fafc;
+        --text-color: #1e293b;
+        --border-color: #e2e8f0;
+        --success-color: #059669;
+        --container-width: 900px;
+      }
+
+      body {
+        font-family: 'Segoe UI', Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: var(--background-color);
+        color: var(--text-color);
+      }
+
+      .header {
+        background-color: white;
+        padding: 1rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        position: fixed;
+        width: 100%;
+        top: 0;
+        z-index: 100;
+      }
+
+      .header-content {
+        max-width: var(--container-width);
+        margin: 0 auto;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .logo {
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: var(--primary-color);
+      }
+
+      .get-help-btn {
+        background-color: var(--primary-color);
+        color: white;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 0.5rem;
+        cursor: pointer;
+        font-weight: 600;
+        transition: background-color 0.2s;
+      }
+
+      .get-help-btn:hover {
+        background-color: var(--secondary-color);
+      }
+
+      .main-container {
+        max-width: var(--container-width);
+        margin: 6rem auto 2rem;
+        padding: 0 1rem;
+        transition: max-width 0.3s;
+      }
+
+      .main-container.fullscreen {
+        max-width: 100%;
+        margin: 6rem 2rem 2rem;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+      }
+
+      .main-container.with-customgpt {
+        display: grid;
+        grid-template-columns: 1fr 400px;
+        gap: 2rem;
+        max-width: 1400px;
+      }
+
+      .container {
+        background-color: white;
+        padding: 2rem;
+        border-radius: 1rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        margin-bottom: 2rem;
+      }
+
+      .container h2 {
+        margin-top: 0;
+        color: var(--primary-color);
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+      }
+
+      .container p {
+        color: #64748b;
+        margin-bottom: 1.5rem;
+      }
+
+      textarea,
+      input[type='text'] {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid var(--border-color);
+        border-radius: 0.5rem;
+        margin: 0.5rem 0;
+        font-family: inherit;
+      }
+
+      button {
+        background-color: var(--primary-color);
+        color: white;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 0.5rem;
+        cursor: pointer;
+        font-weight: 600;
+        margin: 0.5rem;
+        transition: background-color 0.2s;
+      }
+
+      button:hover {
+        background-color: var(--secondary-color);
+      }
+
+      .option-btn {
+        background-color: #f1f5f9;
+        color: var(--text-color);
+      }
+
+      .option-btn:hover {
+        background-color: #e2e8f0;
+      }
+
+      .response-box {
+        background-color: #f8fafc;
+        border: 1px solid var(--border-color);
+        border-radius: 0.5rem;
+        padding: 1rem;
+        margin-top: 1rem;
+        white-space: pre-wrap;
+        font-family: inherit;
+        line-height: 1.6;
+      }
+
+      .loading {
+        display: none;
+        color: var(--primary-color);
+        margin: 1rem 0;
+        font-weight: 500;
+      }
+
+      .feature-input-container {
+        display: flex;
+        gap: 1rem;
+        margin: 1rem 0;
+      }
+
+      .feature-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin: 1rem 0;
+      }
+
+      .feature-tag {
+        background-color: var(--primary-color);
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 1rem;
+        font-size: 0.875rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .feature-tag .remove-btn {
+        background: none;
+        border: none;
+        color: white;
+        padding: 0;
+        margin: 0;
+        cursor: pointer;
+        font-weight: bold;
+      }
+
+      .suggestions-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 1rem;
+        margin: 1rem 0;
+      }
+
+      .suggestion-btn {
+        text-align: left;
+        background-color: #f1f5f9;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .hidden {
+        display: none;
+      }
+
+      @media (max-width: 768px) {
+        .main-container.fullscreen {
+          grid-template-columns: 1fr;
+          margin: 6rem 1rem 2rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="header">
+      <div class="header-content">
+        <div class="logo">AI Support Builder</div>
+        <button class="get-help-btn" onclick="toggleFullscreen()">
+          Get Help with AI
+        </button>
+      </div>
+    </header>
+
+    <div class="main-container with-customgpt" id="mainContainer">
+      <div>
+        <div class="container" id="builderContainer">
+          <h2>Custom Agent Builder</h2>
+          <p>
+            Create your own custom support agent tailored to your business
+            needs!
+          </p>
+          <button onclick="startAgentBuilder()" class="success-btn">
+            Start Building Custom Agent
+          </button>
+          <div id="builderLoading" class="loading">Processing...</div>
+          <div id="builderResponse"></div>
+        </div>
+
+        <div class="container hidden" id="supportContainer">
+          <h2>Customer Support Agent</h2>
+          <textarea
+            id="query"
+            placeholder="Type your question here..."
+          ></textarea>
+          <button onclick="submitQuery()">Submit Query</button>
+          <div id="loading" class="loading">Processing...</div>
+          <div id="response"></div>
+        </div>
+
+        <div class="container" id="userContainer">
+          <h2>User Dashboard</h2>
+          <button onclick="createUserSession()">Create New Session</button>
+          <div id="userSession" style="margin: 10px 0; font-weight: bold"></div>
+          <div id="userPrompts"></div>
+        </div>
+
+        <div class="container" id="testContainer">
+          <h2>Test Custom Agent</h2>
+          <input type="text" id="agentId" placeholder="Enter Agent ID" />
+          <textarea
+            id="customQuery"
+            placeholder="Type your question for the custom agent..."
+          ></textarea>
+          <button onclick="testCustomAgent()">Test Custom Agent</button>
+          <div id="customResponse"></div>
+        </div>
+      </div>
+
+      <div class="container" id="customGPTContainer">
+        <h2>🤖 CustomGPT Guide Generator</h2>
+        <p>Get AI-powered guidance for creating your customer support agent!</p>
+        <textarea
+          id="guideQuery"
+          placeholder="Example: 'Give me a guide for a food delivery website agent with menu, pricing, and order features'"
+          rows="3"
+        ></textarea>
+        <button onclick="generateGuide()" style="background-color: #10b981">
+          Generate Guide
+        </button>
+        <div id="guideLoading" class="loading" style="display: none">
+          Generating your custom guide...
+        </div>
+        <div id="guideResult"></div>
+      </div>
+    </div>
+
+    <script>
+      let currentBuilderSession = null
+      let selectedFeatures = []
+      let availableSuggestions = []
+      let featureDetails = {}
+      let isFullscreen = false
+      let currentUserSession = null
+
+      function toggleFullscreen() {
+        isFullscreen = !isFullscreen
+        const mainContainer = document.getElementById('mainContainer')
+        const supportContainer = document.getElementById('supportContainer')
+
+        if (isFullscreen) {
+          mainContainer.classList.add('fullscreen')
+          supportContainer.classList.remove('hidden')
+        } else {
+          mainContainer.classList.remove('fullscreen')
+          supportContainer.classList.add('hidden')
+        }
+      }
+
+      async function submitQuery() {
+        const query = document.getElementById('query').value.trim()
+        const loading = document.getElementById('loading')
+        const response = document.getElementById('response')
+
+        if (!query) {
+          alert('Please enter a query')
+          return
+        }
+
+        loading.style.display = 'block'
+        response.innerHTML = ''
+
+        try {
+          const res = await fetch('/support', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query }),
+          })
+
+          const data = await res.json()
+          if (res.ok) {
+            response.innerHTML = `
+                        <div class="response-box">
+                            ${data.response}
+                        </div>
+                    `
+          } else {
+            response.innerHTML = `<div class="result-box" style="color: red;">Error: ${data.detail}</div>`
+          }
+        } catch (error) {
+          response.innerHTML = `<div class="result-box" style="color: red;">Error: Could not connect to server</div>`
+        } finally {
+          loading.style.display = 'none'
+        }
+      }
+
+      async function startAgentBuilder() {
+        const loading = document.getElementById('builderLoading')
+        const response = document.getElementById('builderResponse')
+
+        loading.style.display = 'block'
+        response.innerHTML = ''
+        selectedFeatures = []
+        featureDetails = {}
+
+        try {
+          const res = await fetch('/agent-builder/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          })
+
+          const data = await res.json()
+          if (res.ok) {
+            currentBuilderSession = data.session_id
+            displayBuilderStep(data)
+          } else {
+            response.innerHTML = `<div class="result-box" style="color: red;">Error: ${data.detail}</div>`
+          }
+        } catch (error) {
+          response.innerHTML = `<div class="result-box" style="color: red;">Error: Could not connect to server</div>`
+        } finally {
+          loading.style.display = 'none'
+        }
+      }
+
+      async function submitBuilderAnswer(answer) {
+        const loading = document.getElementById('builderLoading')
+        const response = document.getElementById('builderResponse')
+
+        loading.style.display = 'block'
+
+        try {
+          const res = await fetch('/agent-builder/step', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              session_id: currentBuilderSession,
+              answer: answer,
+            }),
+          })
+
+          const data = await res.json()
+          if (res.ok) {
+            if (data.suggestions) {
+              availableSuggestions = data.suggestions
+            }
+            displayBuilderStep(data)
+          } else {
+            response.innerHTML = `<div class="result-box" style="color: red;">Error: ${data.detail}</div>`
+          }
+        } catch (error) {
+          response.innerHTML = `<div class="result-box" style="color: red;">Error: Could not connect to server</div>`
+        } finally {
+          loading.style.display = 'none'
+        }
+      }
+
+      function displayBuilderStep(data) {
+        const response = document.getElementById('builderResponse')
+
+        if (data.is_complete) {
+          response.innerHTML = `
+                    <div class="result-box" style="background-color: #d4edda; color: #155724; border-color: #c3e6cb;">
+                        <h3>🎉 Agent Created Successfully!</h3>
+                        <p><strong>Agent ID:</strong> ${data.agent_id}</p>
+                        <p>Your custom agent is ready to use. Copy the Agent ID above and test it in the "Test Custom Agent" section.</p>
+                    </div>
+                `
+        } else if (data.step === 0) {
+          // Business name and description input step
+          response.innerHTML = `
+                    <div class="result-box">
+                        <h3>Step ${data.step + 1}</h3>
+                        <p><strong>${data.question}</strong></p>
+                        <div class="business-input-container">
+                            <input type="text" id="businessNameInput" placeholder="Enter your business name" style="margin-bottom: 10px;">
+                            <textarea id="businessDescriptionInput" class="business-description" 
+                                placeholder="Describe what your business does, your main services/products, and how customers typically interact with you..."></textarea>
+                            <button onclick="submitBusinessInfo()">Continue</button>
+                        </div>
+                    </div>
+                `
+        } else if (data.step === 1) {
+          // Features step with custom UI
+          response.innerHTML = `
+                    <div class="result-box">
+                        <h3>Step ${data.step + 1}</h3>
+                        ${
+                          data.business_type_info
+                            ? `<div class="business-type-detected">${data.business_type_info}</div>`
+                            : ''
+                        }
+                        <p><strong>${data.question}</strong></p>
+                        <div class="features-container">
+                            <div class="feature-input-container">
+                                <input type="text" id="customFeatureName" class="feature-input" 
+                                    placeholder="Enter custom feature name">
+                                <textarea id="customFeatureDescription" class="feature-input"
+                                    placeholder="Describe what this feature does (optional)"></textarea>
+                                <button class="add-feature-btn" onclick="addCustomFeature()">Add Custom Feature</button>
+                            </div>
+                            <div id="selectedFeatures" class="feature-tags"></div>
+                            <div class="suggestions">
+                                <p><strong>Suggested features for your business:</strong></p>
+                                <div class="suggestions-grid" id="suggestedFeatures">
+                                    Loading suggestions...
+                                </div>
+                            </div>
+                            <button onclick="submitFeatures()" style="margin-top: 15px;">Continue with Selected Features</button>
+                        </div>
+                    </div>
+                `
+
+          // Load suggestions
+          loadFeatureSuggestions()
+        } else {
+          let optionsHtml = ''
+          if (data.options && data.options.length > 0) {
+            optionsHtml = '<div class="options">'
+            data.options.forEach((option) => {
+              const [tone, description] = option.split(' - ')
+              const displayText = description
+                ? `${tone} - ${description}`
+                : option.replace(/_/g, ' ')
+              optionsHtml += `<button class="option-btn" onclick="submitBuilderAnswer('${tone}')">${displayText}</button>`
+            })
+            optionsHtml += '</div>'
+          } else {
+            optionsHtml = `
+                        <input type="text" id="builderInput" placeholder="Enter your answer...">
+                        <button onclick="submitBuilderAnswer(document.getElementById('builderInput').value)">Submit</button>
+                    `
+          }
+
+          response.innerHTML = `
+                    <div class="result-box">
+                        <h3>Step ${data.step + 1}</h3>
+                        <p><strong>${data.question}</strong></p>
+                        ${optionsHtml}
+                    </div>
+                `
+        }
+      }
+
+      async function loadFeatureSuggestions() {
+        try {
+          const res = await fetch(
+            `/agent-builder/features/suggestions?session_id=${currentBuilderSession}`
+          )
+          const data = await res.json()
+
+          if (res.ok) {
+            const suggestionsContainer =
+              document.getElementById('suggestedFeatures')
+            const selectedContainer =
+              document.getElementById('selectedFeatures')
+
+            // Display suggested features
+            suggestionsContainer.innerHTML = data.suggested_features
+              .map(
+                (feature) => `
+                        <button class="suggestion-btn" onclick="addSuggestedFeature('${feature.id}')">
+                            <strong>${feature.name}</strong>
+                            <span class="feature-description">${feature.description}</span>
+                            <span class="feature-priority priority-${feature.priority}">${feature.priority}</span>
+                        </button>
+                    `
+              )
+              .join('')
+
+            // Display selected and custom features
+            updateFeatureDisplay(
+              data.selected_features.concat(data.custom_features)
+            )
+          } else {
+            const suggestionsContainer =
+              document.getElementById('suggestedFeatures')
+            suggestionsContainer.innerHTML =
+              '<p style="color: red;">Failed to load suggestions. Please try refreshing the page.</p>'
+          }
+        } catch (error) {
+          console.error('Error loading suggestions:', error)
+          const suggestionsContainer =
+            document.getElementById('suggestedFeatures')
+          suggestionsContainer.innerHTML =
+            '<p style="color: red;">Failed to load suggestions. Please try refreshing the page.</p>'
+        }
+      }
+
+      async function addCustomFeature() {
+        const nameInput = document.getElementById('customFeatureName')
+        const descInput = document.getElementById('customFeatureDescription')
+        const name = nameInput.value.trim()
+        const description = descInput.value.trim()
+
+        if (!name) {
+          alert('Please enter a feature name')
+          return
+        }
+
+        try {
+          const res = await fetch('/agent-builder/features/add-custom', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              session_id: currentBuilderSession,
+              feature_name: name,
+              feature_description:
+                description || 'Custom feature added by user',
+            }),
+          })
+
+          if (res.ok) {
+            const data = await res.json()
+            nameInput.value = ''
+            descInput.value = ''
+            loadFeatureSuggestions() // Refresh the display
+          } else {
+            const data = await res.json()
+            alert(data.detail || 'Failed to add custom feature')
+          }
+        } catch (error) {
+          console.error('Error adding custom feature:', error)
+          alert('Failed to add custom feature')
+        }
+      }
+
+      async function addSuggestedFeature(featureId) {
+        try {
+          const res = await fetch(
+            `/agent-builder/features/add-suggested/${currentBuilderSession}/${featureId}`,
+            {
+              method: 'POST',
+            }
+          )
+
+          if (res.ok) {
+            loadFeatureSuggestions() // Refresh the display
+          } else {
+            const data = await res.json()
+            alert(data.detail || 'Failed to add feature')
+          }
+        } catch (error) {
+          console.error('Error adding suggested feature:', error)
+          alert('Failed to add feature')
+        }
+      }
+
+      async function removeFeature(featureId) {
+        try {
+          const res = await fetch(
+            `/agent-builder/features/remove/${currentBuilderSession}/${featureId}`,
+            {
+              method: 'POST',
+            }
+          )
+
+          if (res.ok) {
+            loadFeatureSuggestions() // Refresh the display
+          } else {
+            const data = await res.json()
+            alert(data.detail || 'Failed to remove feature')
+          }
+        } catch (error) {
+          console.error('Error removing feature:', error)
+          alert('Failed to remove feature')
+        }
+      }
+
+      function updateFeatureDisplay(features) {
+        const container = document.getElementById('selectedFeatures')
+        container.innerHTML = features
+          .map(
+            (feature) => `
+                <div class="feature-tag">
+                    <div class="feature-info">
+                        <strong>${feature.name}</strong>
+                        ${
+                          feature.description
+                            ? `<div class="feature-description">${feature.description}</div>`
+                            : ''
+                        }
+                    </div>
+                    <span class="feature-priority priority-${
+                      feature.priority
+                    }">${feature.priority}</span>
+                    <span class="remove-btn" onclick="removeFeature('${
+                      feature.id
+                    }')">×</span>
+                </div>
+            `
+          )
+          .join('')
+      }
+
+      async function submitFeatures() {
+        try {
+          const res = await fetch(
+            `/agent-builder/features/suggestions?session_id=${currentBuilderSession}`
+          )
+          const data = await res.json()
+
+          if (res.ok) {
+            const allFeatures = data.selected_features.concat(
+              data.custom_features
+            )
+            if (allFeatures.length === 0) {
+              alert('Please add at least one feature')
+              return
+            }
+
+            const featureIds = allFeatures.map((f) => f.id)
+            submitBuilderAnswer(featureIds.join(','))
+          }
+        } catch (error) {
+          console.error('Error submitting features:', error)
+          alert('Failed to submit features')
+        }
+      }
+
+      function submitBusinessInfo() {
+        const name = document.getElementById('businessNameInput').value.trim()
+        const description = document
+          .getElementById('businessDescriptionInput')
+          .value.trim()
+
+        if (!name) {
+          alert('Please enter your business name')
+          return
+        }
+
+        submitBuilderAnswer(`${name}\n${description}`)
+      }
+
+      async function testCustomAgent() {
+        const agentId = document.getElementById('agentId').value.trim()
+        const query = document.getElementById('customQuery').value.trim()
+        const response = document.getElementById('customResponse')
+
+        if (!agentId || !query) {
+          alert('Please enter both Agent ID and query')
+          return
+        }
+
+        try {
+          const res = await fetch('/custom-agent/query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agent_id: agentId, query: query }),
+          })
+
+          const data = await res.json()
+          if (res.ok) {
+            response.innerHTML = `
+                        <div class="response-box">
+                            ${data.response}
+                        </div>
+                    `
+          } else {
+            response.innerHTML = `<div class="result-box" style="color: red;">Error: ${data.detail}</div>`
+          }
+        } catch (error) {
+          response.innerHTML = `<div class="result-box" style="color: red;">Error: Could not connect to server</div>`
+        }
+      }
+
+      async function createUserSession() {
+        try {
+          const res = await fetch('/user/session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          })
+
+          const data = await res.json()
+          if (res.ok) {
+            currentUserSession = data.session_id
+            document.getElementById(
+              'userSession'
+            ).innerHTML = `Current Session: ${currentUserSession}`
+            loadUserPrompts()
+          } else {
+            alert('Failed to create session')
+          }
+        } catch (error) {
+          console.error('Error creating session:', error)
+          alert('Failed to create session')
+        }
+      }
+
+      async function loadUserPrompts() {
+        if (!currentUserSession) return
+
+        try {
+          const res = await fetch(`/user/prompts/${currentUserSession}`)
+          const data = await res.json()
+
+          if (res.ok) {
+            const container = document.getElementById('userPrompts')
+            if (data.prompts.length === 0) {
+              container.innerHTML = '<p>No saved prompts yet.</p>'
+              return
+            }
+
+            container.innerHTML =
+              '<h3>Your Saved Prompts:</h3>' +
+              data.prompts
+                .map(
+                  (prompt) => `
+                            <div class="prompt-item" style="border: 1px solid #ddd; padding: 10px; margin: 10px 0;">
+                                <h4>${prompt.business_name}</h4>
+                                <p>${prompt.business_description.substring(
+                                  0,
+                                  100
+                                )}...</p>
+                                <small>Created: ${new Date(
+                                  prompt.created_at
+                                ).toLocaleDateString()}</small>
+                                <br>
+                                <button onclick="loadPrompt('${
+                                  prompt.prompt_id
+                                }')">Load Agent</button>
+                                <button onclick="editPrompt('${
+                                  prompt.prompt_id
+                                }')">Edit</button>
+                                <button onclick="deletePrompt('${
+                                  prompt.prompt_id
+                                }')">Delete</button>
+                            </div>
+                        `
+                )
+                .join('')
+          }
+        } catch (error) {
+          console.error('Error loading prompts:', error)
+        }
+      }
+
+      async function loadPrompt(promptId) {
+        try {
+          const res = await fetch(
+            `/user/prompt/${currentUserSession}/${promptId}`
+          )
+          const promptData = await res.json()
+
+          if (res.ok) {
+            // Load the prompt into the agent builder
+            document.getElementById('businessNameInput').value =
+              promptData.business_name
+            document.getElementById('businessDescriptionInput').value =
+              promptData.business_description
+            alert('Prompt loaded! You can now continue building your agent.')
+          }
+        } catch (error) {
+          console.error('Error loading prompt:', error)
+        }
+      }
+
+      async function deletePrompt(promptId) {
+        if (!confirm('Are you sure you want to delete this prompt?')) return
+
+        try {
+          const res = await fetch(
+            `/user/prompt/${currentUserSession}/${promptId}`,
+            {
+              method: 'DELETE',
+            }
+          )
+
+          if (res.ok) {
+            loadUserPrompts()
+            alert('Prompt deleted successfully')
+          }
+        } catch (error) {
+          console.error('Error deleting prompt:', error)
+        }
+      }
+
+      function editPrompt(promptId) {
+        // For now, just show an alert. Can be enhanced to open an edit modal
+        alert(
+          'Edit functionality coming soon! For now, create a new prompt with updated information.'
+        )
+      }
+
+      async function generateGuide() {
+        const query = document.getElementById('guideQuery').value.trim()
+        const loading = document.getElementById('guideLoading')
+        const result = document.getElementById('guideResult')
+
+        if (!query) {
+          alert('Please enter a query for the guide')
+          return
+        }
+
+        loading.style.display = 'block'
+        result.innerHTML = ''
+
+        try {
+          const res = await fetch('/customgpt/generate-guide', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: query }),
+          })
+
+          const data = await res.json()
+          if (res.ok) {
+            result.innerHTML = `
+                        <div class="guide-result" style="background-color: #f0f9ff; border: 1px solid #0ea5e9; border-radius: 8px; padding: 20px; margin: 10px 0;">
+                            <h3 style="color: #0ea5e9; margin-top: 0;">🎯 Generated Guide for Your Agent</h3>
+
+                            <div style="margin: 15px 0;">
+                                <strong>Business Name:</strong>
+                                <div style="background-color: white; padding: 10px; border-radius: 4px; margin: 5px 0; border-left: 4px solid #0ea5e9;">
+                                    ${data.business_name}
+                                </div>
+                            </div>
+
+                            <div style="margin: 15px 0;">
+                                <strong>Business Description:</strong>
+                                <div style="background-color: white; padding: 10px; border-radius: 4px; margin: 5px 0; border-left: 4px solid #0ea5e9;">
+                                    ${data.business_description}
+                                </div>
+                            </div>
+
+                            <div style="margin: 15px 0;">
+                                <strong>Recommended Features:</strong>
+                                <div style="background-color: white; padding: 10px; border-radius: 4px; margin: 5px 0; border-left: 4px solid #0ea5e9;">
+                                    ${data.features
+                                      .map(
+                                        (feature) =>
+                                          `<div style="margin: 8px 0; padding: 8px; background-color: #f8fafc; border-radius: 4px;">
+                                            <strong>${feature.name}:</strong> ${feature.description}
+                                        </div>`
+                                      )
+                                      .join('')}
+                                </div>
+                            </div>
+
+                            <div style="margin: 15px 0;">
+                                <strong>Suggested Tone:</strong>
+                                <div style="background-color: white; padding: 10px; border-radius: 4px; margin: 5px 0; border-left: 4px solid #0ea5e9;">
+                                    ${data.suggested_tone}
+                                </div>
+                            </div>
+
+                            <button onclick="useGuide('${
+                              data.business_name
+                            }', '${data.business_description.replace(
+              /'/g,
+              "\\'"
+            )}', '${data.suggested_tone}')"
+                                    style="background-color: #059669; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 15px;">
+                                🚀 Use This Guide to Build Agent
+                            </button>
+                        </div>
+                    `
+          } else {
+            result.innerHTML = `<div style="color: red; padding: 10px; background-color: #fee2e2; border-radius: 4px;">Error: ${data.detail}</div>`
+          }
+        } catch (error) {
+          result.innerHTML = `<div style="color: red; padding: 10px; background-color: #fee2e2; border-radius: 4px;">Error: Could not connect to server</div>`
+        } finally {
+          loading.style.display = 'none'
+        }
+      }
+
+      function useGuide(businessName, businessDescription, suggestedTone) {
+        // Fill the agent builder form with the generated guide
+        document.getElementById('businessNameInput').value = businessName
+        document.getElementById('businessDescriptionInput').value =
+          businessDescription
+
+        // Scroll to the agent builder
+        document
+          .getElementById('builderContainer')
+          .scrollIntoView({ behavior: 'smooth' })
+
+        alert(
+          'Guide applied! Now click "Start Building Custom Agent" to create your agent with these details.'
+        )
+      }
+    </script>
+  </body>
+</html>

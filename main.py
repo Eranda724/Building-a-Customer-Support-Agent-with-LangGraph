@@ -1,14 +1,17 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field, SecretStr
 from typing import Dict, Any, List, Optional
 from langchain_groq import ChatGroq
+from langchain_core.messages import HumanMessage
 import uuid
 import json
 from datetime import datetime
 import os
 from dotenv import load_dotenv
+from io import BytesIO
+import base64
 
 # Import our custom modules
 from custom_agent_engine import State, build_agent_workflow
@@ -19,7 +22,14 @@ from agent_storage import (
     add_agent_features,
     set_agent_tone,
     finalize_agent,
-    load_default_prompts
+    load_default_prompts,
+    update_agent_with_menu_data,
+    create_user_session,
+    save_user_prompt,
+    load_user_prompt,
+    list_user_prompts,
+    update_user_prompt,
+    delete_user_prompt
 )
 
 # Load environment variables
@@ -44,7 +54,7 @@ if not GROQ_API_KEY.startswith("gsk_"):
 llm = ChatGroq(
     temperature=0.7,
     api_key=GROQ_API_KEY,
-    model="mistral-saba-24b")
+    model="llama3-8b-8192")
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -169,6 +179,32 @@ DEFAULT_FEATURES = {
             "priority": "medium"
         }
     ],
+    "food_delivery": [
+        {
+            "id": "menu_inquiry",
+            "name": "Menu Information",
+            "description": "Provide details about menu items and availability",
+            "priority": "high"
+        },
+        {
+            "id": "pricing_info",
+            "name": "Pricing Information",
+            "description": "Handle pricing and delivery fee queries",
+            "priority": "high"
+        },
+        {
+            "id": "order_placement",
+            "name": "Order Placement",
+            "description": "Assist with placing and modifying orders",
+            "priority": "high"
+        },
+        {
+            "id": "delivery_tracking",
+            "name": "Delivery Tracking",
+            "description": "Track order status and delivery information",
+            "priority": "medium"
+        }
+    ],
     "default": [
         {
             "id": "general_support",
@@ -281,642 +317,9 @@ async def remove_feature(session_id: str, feature_id: str):
     save_agent_config(session_id, config)
     return {"status": "success"}
 
-# Keep existing endpoints
-@app.get("/", response_class=HTMLResponse)
+@app.get("/")
 async def get_ui():
-    # Keep the existing UI HTML code here
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>AI Support Agent Builder</title>
-        <style>
-            :root {
-                --primary-color: #2563eb;
-                --secondary-color: #1e40af;
-                --background-color: #f8fafc;
-                --text-color: #1e293b;
-                --border-color: #e2e8f0;
-                --success-color: #059669;
-                --container-width: 900px;
-            }
-
-            body {
-                font-family: 'Segoe UI', Arial, sans-serif;
-                margin: 0;
-                padding: 0;
-                background-color: var(--background-color);
-                color: var(--text-color);
-            }
-
-            .header {
-                background-color: white;
-                padding: 1rem;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                position: fixed;
-                width: 100%;
-                top: 0;
-                z-index: 100;
-            }
-
-            .header-content {
-                max-width: var(--container-width);
-                margin: 0 auto;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-            }
-
-            .logo {
-                font-size: 1.5rem;
-                font-weight: bold;
-                color: var(--primary-color);
-            }
-
-            .get-help-btn {
-                background-color: var(--primary-color);
-                color: white;
-                border: none;
-                padding: 0.75rem 1.5rem;
-                border-radius: 0.5rem;
-                cursor: pointer;
-                font-weight: 600;
-                transition: background-color 0.2s;
-            }
-
-            .get-help-btn:hover {
-                background-color: var(--secondary-color);
-            }
-
-            .main-container {
-                max-width: var(--container-width);
-                margin: 6rem auto 2rem;
-                padding: 0 1rem;
-                transition: max-width 0.3s;
-            }
-
-            .main-container.fullscreen {
-                max-width: 100%;
-                margin: 6rem 2rem 2rem;
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 2rem;
-            }
-
-            .container {
-                background-color: white;
-                padding: 2rem;
-                border-radius: 1rem;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-                margin-bottom: 2rem;
-            }
-
-            .container h2 {
-                margin-top: 0;
-                color: var(--primary-color);
-                font-size: 1.5rem;
-                margin-bottom: 1rem;
-            }
-
-            .container p {
-                color: #64748b;
-                margin-bottom: 1.5rem;
-            }
-
-            textarea, input[type="text"] {
-                width: 100%;
-                padding: 0.75rem;
-                border: 1px solid var(--border-color);
-                border-radius: 0.5rem;
-                margin: 0.5rem 0;
-                font-family: inherit;
-            }
-
-            button {
-                background-color: var(--primary-color);
-                color: white;
-                border: none;
-                padding: 0.75rem 1.5rem;
-                border-radius: 0.5rem;
-                cursor: pointer;
-                font-weight: 600;
-                margin: 0.5rem;
-                transition: background-color 0.2s;
-            }
-
-            button:hover {
-                background-color: var(--secondary-color);
-            }
-
-            .option-btn {
-                background-color: #f1f5f9;
-                color: var(--text-color);
-            }
-
-            .option-btn:hover {
-                background-color: #e2e8f0;
-            }
-
-            .response-box {
-                background-color: #f8fafc;
-                border: 1px solid var(--border-color);
-                border-radius: 0.5rem;
-                padding: 1rem;
-                margin-top: 1rem;
-                white-space: pre-wrap;
-                font-family: inherit;
-                line-height: 1.6;
-            }
-
-            .loading {
-                display: none;
-                color: var(--primary-color);
-                margin: 1rem 0;
-                font-weight: 500;
-            }
-
-            .feature-input-container {
-                display: flex;
-                gap: 1rem;
-                margin: 1rem 0;
-            }
-
-            .feature-tags {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 0.5rem;
-                margin: 1rem 0;
-            }
-
-            .feature-tag {
-                background-color: var(--primary-color);
-                color: white;
-                padding: 0.5rem 1rem;
-                border-radius: 1rem;
-                font-size: 0.875rem;
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-            }
-
-            .feature-tag .remove-btn {
-                background: none;
-                border: none;
-                color: white;
-                padding: 0;
-                margin: 0;
-                cursor: pointer;
-                font-weight: bold;
-            }
-
-            .suggestions-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-                gap: 1rem;
-                margin: 1rem 0;
-            }
-
-            .suggestion-btn {
-                text-align: left;
-                background-color: #f1f5f9;
-                padding: 1rem;
-                border-radius: 0.5rem;
-                display: flex;
-                flex-direction: column;
-                gap: 0.5rem;
-            }
-
-            .hidden {
-                display: none;
-            }
-
-            @media (max-width: 768px) {
-                .main-container.fullscreen {
-                    grid-template-columns: 1fr;
-                    margin: 6rem 1rem 2rem;
-                }
-            }
-        </style>
-    </head>
-    <body>
-        <header class="header">
-            <div class="header-content">
-                <div class="logo">AI Support Builder</div>
-                <button class="get-help-btn" onclick="toggleFullscreen()">Get Help with AI</button>
-        </div>
-        </header>
-
-        <div class="main-container" id="mainContainer">
-            <div class="container" id="builderContainer">
-                <h2>Custom Agent Builder</h2>
-                <p>Create your own custom support agent tailored to your business needs!</p>
-            <button onclick="startAgentBuilder()" class="success-btn">Start Building Custom Agent</button>
-            <div id="builderLoading" class="loading">Processing...</div>
-            <div id="builderResponse"></div>
-        </div>
-
-            <div class="container hidden" id="supportContainer">
-                <h2>Customer Support Agent</h2>
-                <textarea id="query" placeholder="Type your question here..."></textarea>
-                <button onclick="submitQuery()">Submit Query</button>
-                <div id="loading" class="loading">Processing...</div>
-                <div id="response"></div>
-            </div>
-
-            <div class="container" id="testContainer">
-            <h2>Test Custom Agent</h2>
-            <input type="text" id="agentId" placeholder="Enter Agent ID">
-            <textarea id="customQuery" placeholder="Type your question for the custom agent..."></textarea>
-            <button onclick="testCustomAgent()">Test Custom Agent</button>
-            <div id="customResponse"></div>
-            </div>
-        </div>
-
-        <script>
-            let currentBuilderSession = null;
-            let selectedFeatures = [];
-            let availableSuggestions = [];
-            let featureDetails = {};
-            let isFullscreen = false;
-
-            function toggleFullscreen() {
-                isFullscreen = !isFullscreen;
-                const mainContainer = document.getElementById('mainContainer');
-                const supportContainer = document.getElementById('supportContainer');
-                
-                if (isFullscreen) {
-                    mainContainer.classList.add('fullscreen');
-                    supportContainer.classList.remove('hidden');
-                } else {
-                    mainContainer.classList.remove('fullscreen');
-                    supportContainer.classList.add('hidden');
-                }
-            }
-
-            async function submitQuery() {
-                const query = document.getElementById('query').value.trim();
-                const loading = document.getElementById('loading');
-                const response = document.getElementById('response');
-
-                if (!query) {
-                    alert('Please enter a query');
-                    return;
-                }
-
-                loading.style.display = 'block';
-                response.innerHTML = '';
-
-                try {
-                    const res = await fetch('/support', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ query }),
-                    });
-
-                    const data = await res.json();
-                    if (res.ok) {
-                        response.innerHTML = `
-                            <div class="response-box">
-                                ${data.response}
-                            </div>
-                        `;
-                    } else {
-                        response.innerHTML = `<div class="result-box" style="color: red;">Error: ${data.detail}</div>`;
-                    }
-                } catch (error) {
-                    response.innerHTML = `<div class="result-box" style="color: red;">Error: Could not connect to server</div>`;
-                } finally {
-                    loading.style.display = 'none';
-                }
-            }
-
-            async function startAgentBuilder() {
-                const loading = document.getElementById('builderLoading');
-                const response = document.getElementById('builderResponse');
-                
-                loading.style.display = 'block';
-                response.innerHTML = '';
-                selectedFeatures = [];
-                featureDetails = {};
-
-                try {
-                    const res = await fetch('/agent-builder/start', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({}),
-                    });
-
-                    const data = await res.json();
-                    if (res.ok) {
-                        currentBuilderSession = data.session_id;
-                        displayBuilderStep(data);
-                    } else {
-                        response.innerHTML = `<div class="result-box" style="color: red;">Error: ${data.detail}</div>`;
-                    }
-                } catch (error) {
-                    response.innerHTML = `<div class="result-box" style="color: red;">Error: Could not connect to server</div>`;
-                } finally {
-                    loading.style.display = 'none';
-                }
-            }
-
-            async function submitBuilderAnswer(answer) {
-                const loading = document.getElementById('builderLoading');
-                const response = document.getElementById('builderResponse');
-                
-                loading.style.display = 'block';
-
-                try {
-                    const res = await fetch('/agent-builder/step', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            session_id: currentBuilderSession, 
-                            answer: answer 
-                        }),
-                    });
-
-                    const data = await res.json();
-                    if (res.ok) {
-                        if (data.suggestions) {
-                            availableSuggestions = data.suggestions;
-                        }
-                        displayBuilderStep(data);
-                    } else {
-                        response.innerHTML = `<div class="result-box" style="color: red;">Error: ${data.detail}</div>`;
-                    }
-                } catch (error) {
-                    response.innerHTML = `<div class="result-box" style="color: red;">Error: Could not connect to server</div>`;
-                } finally {
-                    loading.style.display = 'none';
-                }
-            }
-
-            function displayBuilderStep(data) {
-                const response = document.getElementById('builderResponse');
-                
-                if (data.is_complete) {
-                    response.innerHTML = `
-                        <div class="result-box" style="background-color: #d4edda; color: #155724; border-color: #c3e6cb;">
-                            <h3>🎉 Agent Created Successfully!</h3>
-                            <p><strong>Agent ID:</strong> ${data.agent_id}</p>
-                            <p>Your custom agent is ready to use. Copy the Agent ID above and test it in the "Test Custom Agent" section.</p>
-                        </div>
-                    `;
-                } else if (data.step === 0) {
-                    // Business name and description input step
-                    response.innerHTML = `
-                        <div class="result-box">
-                            <h3>Step ${data.step + 1}</h3>
-                            <p><strong>${data.question}</strong></p>
-                            <div class="business-input-container">
-                                <input type="text" id="businessNameInput" placeholder="Enter your business name" style="margin-bottom: 10px;">
-                                <textarea id="businessDescriptionInput" class="business-description" 
-                                    placeholder="Describe what your business does, your main services/products, and how customers typically interact with you..."></textarea>
-                                <button onclick="submitBusinessInfo()">Continue</button>
-                            </div>
-                        </div>
-                    `;
-                } else if (data.step === 1) {
-                    // Features step with custom UI
-                    response.innerHTML = `
-                        <div class="result-box">
-                            <h3>Step ${data.step + 1}</h3>
-                            ${data.business_type_info ? `<div class="business-type-detected">${data.business_type_info}</div>` : ''}
-                            <p><strong>${data.question}</strong></p>
-                            <div class="features-container">
-                                <div class="feature-input-container">
-                                    <input type="text" id="customFeatureName" class="feature-input" 
-                                        placeholder="Enter custom feature name">
-                                    <textarea id="customFeatureDescription" class="feature-input"
-                                        placeholder="Describe what this feature does (optional)"></textarea>
-                                    <button class="add-feature-btn" onclick="addCustomFeature()">Add Custom Feature</button>
-                                </div>
-                                <div id="selectedFeatures" class="feature-tags"></div>
-                                <div class="suggestions">
-                                    <p><strong>Suggested features for your business:</strong></p>
-                                    <div class="suggestions-grid" id="suggestedFeatures">
-                                        Loading suggestions...
-                                    </div>
-                                </div>
-                                <button onclick="submitFeatures()" style="margin-top: 15px;">Continue with Selected Features</button>
-                            </div>
-                        </div>
-                    `;
-                    
-                    // Load suggestions
-                    loadFeatureSuggestions();
-                } else {
-                    let optionsHtml = '';
-                    if (data.options && data.options.length > 0) {
-                        optionsHtml = '<div class="options">';
-                        data.options.forEach(option => {
-                            optionsHtml += `<button class="option-btn" onclick="submitBuilderAnswer('${option}')">${option.replace(/_/g, ' ')}</button>`;
-                        });
-                        optionsHtml += '</div>';
-                    } else {
-                        optionsHtml = `
-                            <input type="text" id="builderInput" placeholder="Enter your answer...">
-                            <button onclick="submitBuilderAnswer(document.getElementById('builderInput').value)">Submit</button>
-                        `;
-                    }
-                    
-                    response.innerHTML = `
-                        <div class="result-box">
-                            <h3>Step ${data.step + 1}</h3>
-                            <p><strong>${data.question}</strong></p>
-                            ${optionsHtml}
-                        </div>
-                    `;
-                }
-            }
-
-            async function loadFeatureSuggestions() {
-                try {
-                    const res = await fetch(`/agent-builder/features/suggestions?session_id=${currentBuilderSession}`);
-                    const data = await res.json();
-                    
-                    if (res.ok) {
-                        const suggestionsContainer = document.getElementById('suggestedFeatures');
-                        const selectedContainer = document.getElementById('selectedFeatures');
-                        
-                        // Display suggested features
-                        suggestionsContainer.innerHTML = data.suggested_features.map(feature => `
-                            <button class="suggestion-btn" onclick="addSuggestedFeature('${feature.id}')">
-                                <strong>${feature.name}</strong>
-                                <span class="feature-description">${feature.description}</span>
-                                <span class="feature-priority priority-${feature.priority}">${feature.priority}</span>
-                            </button>
-                        `).join('');
-                        
-                        // Display selected and custom features
-                        updateFeatureDisplay(data.selected_features.concat(data.custom_features));
-                    } else {
-                        const suggestionsContainer = document.getElementById('suggestedFeatures');
-                        suggestionsContainer.innerHTML = '<p style="color: red;">Failed to load suggestions. Please try refreshing the page.</p>';
-                    }
-                } catch (error) {
-                    console.error('Error loading suggestions:', error);
-                    const suggestionsContainer = document.getElementById('suggestedFeatures');
-                    suggestionsContainer.innerHTML = '<p style="color: red;">Failed to load suggestions. Please try refreshing the page.</p>';
-                }
-            }
-
-            async function addCustomFeature() {
-                const nameInput = document.getElementById('customFeatureName');
-                const descInput = document.getElementById('customFeatureDescription');
-                const name = nameInput.value.trim();
-                const description = descInput.value.trim();
-                
-                if (!name) {
-                    alert('Please enter a feature name');
-                    return;
-                }
-                
-                try {
-                    const res = await fetch('/agent-builder/features/add-custom', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            session_id: currentBuilderSession,
-                            feature_name: name,
-                            feature_description: description || 'Custom feature added by user'
-                        })
-                    });
-                    
-                    if (res.ok) {
-                        const data = await res.json();
-                        nameInput.value = '';
-                        descInput.value = '';
-                        loadFeatureSuggestions();  // Refresh the display
-                    } else {
-                        const data = await res.json();
-                        alert(data.detail || 'Failed to add custom feature');
-                    }
-                } catch (error) {
-                    console.error('Error adding custom feature:', error);
-                    alert('Failed to add custom feature');
-                }
-            }
-
-            async function addSuggestedFeature(featureId) {
-                try {
-                    const res = await fetch(`/agent-builder/features/add-suggested/${currentBuilderSession}/${featureId}`, {
-                        method: 'POST'
-                    });
-                    
-                    if (res.ok) {
-                        loadFeatureSuggestions();  // Refresh the display
-                    } else {
-                        const data = await res.json();
-                        alert(data.detail || 'Failed to add feature');
-                    }
-                } catch (error) {
-                    console.error('Error adding suggested feature:', error);
-                    alert('Failed to add feature');
-                }
-            }
-
-            async function removeFeature(featureId) {
-                try {
-                    const res = await fetch(`/agent-builder/features/remove/${currentBuilderSession}/${featureId}`, {
-                        method: 'POST'
-                    });
-                    
-                    if (res.ok) {
-                        loadFeatureSuggestions();  // Refresh the display
-                    } else {
-                        const data = await res.json();
-                        alert(data.detail || 'Failed to remove feature');
-                    }
-                } catch (error) {
-                    console.error('Error removing feature:', error);
-                    alert('Failed to remove feature');
-                }
-            }
-
-            function updateFeatureDisplay(features) {
-                const container = document.getElementById('selectedFeatures');
-                container.innerHTML = features.map(feature => `
-                    <div class="feature-tag">
-                        <div class="feature-info">
-                            <strong>${feature.name}</strong>
-                            ${feature.description ? `<div class="feature-description">${feature.description}</div>` : ''}
-                        </div>
-                        <span class="feature-priority priority-${feature.priority}">${feature.priority}</span>
-                        <span class="remove-btn" onclick="removeFeature('${feature.id}')">×</span>
-                    </div>
-                `).join('');
-            }
-
-            async function submitFeatures() {
-                try {
-                    const res = await fetch(`/agent-builder/features/suggestions?session_id=${currentBuilderSession}`);
-                    const data = await res.json();
-                    
-                    if (res.ok) {
-                        const allFeatures = data.selected_features.concat(data.custom_features);
-                        if (allFeatures.length === 0) {
-                            alert('Please add at least one feature');
-                            return;
-                        }
-                        
-                        const featureIds = allFeatures.map(f => f.id);
-                        submitBuilderAnswer(featureIds.join(','));
-                    }
-                } catch (error) {
-                    console.error('Error submitting features:', error);
-                    alert('Failed to submit features');
-                }
-            }
-
-            function submitBusinessInfo() {
-                const name = document.getElementById('businessNameInput').value.trim();
-                const description = document.getElementById('businessDescriptionInput').value.trim();
-                
-                if (!name) {
-                    alert('Please enter your business name');
-                    return;
-                }
-                
-                submitBuilderAnswer(`${name}\n${description}`);
-            }
-
-            async function testCustomAgent() {
-                const agentId = document.getElementById('agentId').value.trim();
-                const query = document.getElementById('customQuery').value.trim();
-                const response = document.getElementById('customResponse');
-
-                if (!agentId || !query) {
-                    alert('Please enter both Agent ID and query');
-                    return;
-                }
-
-                try {
-                    const res = await fetch('/custom-agent/query', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ agent_id: agentId, query: query }),
-                    });
-
-                    const data = await res.json();
-                    if (res.ok) {
-                        response.innerHTML = `
-                            <div class="response-box">
-                                ${data.response}
-                            </div>
-                        `;
-                    } else {
-                        response.innerHTML = `<div class="result-box" style="color: red;">Error: ${data.detail}</div>`;
-                    }
-                } catch (error) {
-                    response.innerHTML = `<div class="result-box" style="color: red;">Error: Could not connect to server</div>`;
-                }
-            }
-        </script>
-    </body>
-    </html>
-    """
+    return FileResponse("index.html", media_type="text/html")
 
 @app.post("/support", response_model=SupportResponse)
 async def get_support(query: Query):
@@ -945,11 +348,11 @@ async def get_support(query: Query):
 async def start_agent_builder(request: StartAgentBuilderRequest):
     """Start the agent builder process"""
     session_id = str(uuid.uuid4())
-    
+
     return AgentBuilderResponse(
         session_id=session_id,
         step=0,
-        question="What is the name of your business? Please also provide a brief description of what your business does.",
+        question="What is the name of your business/system? Please provide a detailed description of what it does, its services, or any specific information customers should know.",
         options=None
     )
 
@@ -965,13 +368,28 @@ async def agent_builder_step(request: AgentBuilderStepRequest):
             parts = request.answer.split("\n", 1)
             business_name = parts[0].strip()
             business_description = parts[1].strip() if len(parts) > 1 else ""
-            
-            # Create initial agent config
+
+            # Create initial agent config with universal type
             config = create_agent_step_1(
                 request.session_id,
                 business_name,
-                business_description
+                business_description,
+                business_type="universal"  # Use universal type for any business
             )
+
+            # Extract menu data for food delivery businesses
+            if "food" in business_description.lower() or "restaurant" in business_description.lower() or "delivery" in business_description.lower():
+                update_agent_with_menu_data(request.session_id, business_description)
+
+            # Save user's prompt data
+            prompt_data = {
+                "business_name": business_name,
+                "business_description": business_description,
+                "business_type": "universal",
+                "session_id": request.session_id
+            }
+            # Use session_id as user_id for now (can be enhanced with proper user auth later)
+            save_user_prompt(request.session_id, request.session_id, prompt_data)
             
             return AgentBuilderResponse(
                 session_id=request.session_id,
@@ -999,7 +417,7 @@ async def agent_builder_step(request: AgentBuilderStepRequest):
                 session_id=request.session_id,
                 step=2,
                 question="What tone should your agent use?",
-                options=["professional", "friendly", "casual", "empathetic"]
+                options=["professional - Formal and business-like communication", "friendly - Warm and approachable tone", "casual - Relaxed and conversational style", "empathetic - Understanding and caring approach"]
             )
             
         elif current_step == 2:
@@ -1048,16 +466,187 @@ async def query_custom_agent(query: CustomAgentQuery):
     try:
         # Create state for query
         state = State(query=query.query)
-        
+
         # Build and run workflow
         workflow = build_agent_workflow(config)
         result = workflow.invoke(state)
-        
+
         return {
             "response": result["response"]
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
+
+@app.post("/custom-agent/voice-query")
+async def voice_query_custom_agent(agent_id: str, audio_file: UploadFile = File(...)):
+    """Handle voice queries for custom agents"""
+    # Load agent configuration
+    config = load_agent_config(agent_id)
+    if not config:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    try:
+        # Read audio file
+        audio_content = await audio_file.read()
+        audio_buffer = BytesIO(audio_content)
+
+        # Transcribe audio (simplified - would need actual transcription service)
+        # For now, return a placeholder response
+        query_text = "Voice query transcribed"
+
+        # Create state for query
+        state = State(query=query_text)
+
+        # Build and run workflow
+        workflow = build_agent_workflow(config)
+        result = workflow.invoke(state)
+
+        return {
+            "transcribed_query": query_text,
+            "response": result["response"],
+            "audio_response": base64.b64encode(b"audio_placeholder").decode()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing voice query: {str(e)}")
+
+@app.post("/custom-agent/generate-voice")
+async def generate_voice_response(query: CustomAgentQuery):
+    """Generate voice response for custom agents"""
+    # Load agent configuration
+    config = load_agent_config(query.agent_id)
+    if not config:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    try:
+        # Create state for query
+        state = State(query=query.query)
+
+        # Build and run workflow
+        workflow = build_agent_workflow(config)
+        result = workflow.invoke(state)
+
+        # Generate audio response (placeholder)
+        audio_data = base64.b64encode(b"audio_placeholder").decode()
+
+        return {
+            "response": result["response"],
+            "audio_base64": audio_data
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating voice response: {str(e)}")
+
+# CustomGPT - Guided Prompt Generation
+class GuidedPromptRequest(BaseModel):
+    query: str
+
+@app.post("/customgpt/generate-guide")
+async def generate_business_guide(request: GuidedPromptRequest):
+    """Generate guided prompts for creating customer support agents"""
+    try:
+        # Create a prompt to generate business guide
+        guide_prompt = f"""
+        You are an expert business consultant. A user wants to create a customer support agent for: "{request.query}"
+
+        Please provide a comprehensive guide with:
+        1. Business Name suggestion
+        2. Detailed business description (2-3 sentences)
+        3. Key features the agent should support (5-8 features)
+        4. Suggested agent tone
+        5. Any special considerations
+
+        Format your response as a JSON object with these keys:
+        - business_name
+        - business_description
+        - features (array of feature objects with 'name' and 'description')
+        - suggested_tone
+        - special_considerations
+
+        Make it practical and ready to use for building a customer support agent.
+        """
+
+        response = llm.invoke([HumanMessage(content=guide_prompt)])
+
+        # Try to parse as JSON, if not, create structured response
+        try:
+            import json
+            guide_data = json.loads(response.content.strip())
+        except:
+            # Fallback: extract information from text response
+            content = response.content
+            guide_data = {
+                "business_name": "Generated Business Name",
+                "business_description": content[:200] + "...",
+                "features": [
+                    {"name": "General Support", "description": "Basic customer support"},
+                    {"name": "Information", "description": "Provide business information"}
+                ],
+                "suggested_tone": "professional",
+                "special_considerations": "Generated guide for " + request.query
+            }
+
+        return guide_data
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating guide: {str(e)}")
+
+# User Management Endpoints
+@app.post("/user/session")
+async def create_session():
+    """Create a new user session"""
+    session_id = create_user_session()
+    return {"session_id": session_id}
+
+@app.post("/user/prompt/save")
+async def save_prompt(request: dict):
+    """Save a user's prompt"""
+    user_id = request.get("user_id")
+    prompt_id = request.get("prompt_id")
+    prompt_data = request.get("prompt_data", {})
+
+    if not user_id or not prompt_id:
+        raise HTTPException(status_code=400, detail="user_id and prompt_id are required")
+
+    try:
+        save_user_prompt(user_id, prompt_id, prompt_data)
+        return {"status": "success", "message": "Prompt saved successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error saving prompt: {str(e)}")
+
+@app.get("/user/prompts/{user_id}")
+async def get_user_prompts(user_id: str):
+    """Get all prompts for a user"""
+    try:
+        prompts = list_user_prompts(user_id)
+        return {"prompts": prompts}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error loading prompts: {str(e)}")
+
+@app.get("/user/prompt/{user_id}/{prompt_id}")
+async def get_user_prompt(user_id: str, prompt_id: str):
+    """Get a specific user prompt"""
+    prompt_data = load_user_prompt(user_id, prompt_id)
+    if not prompt_data:
+        raise HTTPException(status_code=404, detail="Prompt not found")
+
+    return prompt_data
+
+@app.put("/user/prompt/{user_id}/{prompt_id}")
+async def update_prompt(user_id: str, prompt_id: str, updates: dict):
+    """Update a user's prompt"""
+    success = update_user_prompt(user_id, prompt_id, updates)
+    if not success:
+        raise HTTPException(status_code=404, detail="Prompt not found")
+
+    return {"status": "success", "message": "Prompt updated successfully"}
+
+@app.delete("/user/prompt/{user_id}/{prompt_id}")
+async def delete_prompt(user_id: str, prompt_id: str):
+    """Delete a user's prompt"""
+    success = delete_user_prompt(user_id, prompt_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Prompt not found")
+
+    return {"status": "success", "message": "Prompt deleted successfully"}
 
 if __name__ == "__main__":
     import uvicorn

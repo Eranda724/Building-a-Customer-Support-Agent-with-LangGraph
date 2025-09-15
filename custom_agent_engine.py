@@ -47,7 +47,7 @@ def build_agent_workflow(config: Dict[str, Any], llm: Optional[ChatGroq] = None)
         llm = ChatGroq(
             temperature=0.7,
             api_key=api_key,
-            model="mistral-saba-24b"
+            model="moonshotai/kimi-k2-instruct"
         )
 
     prompts = config.get("prompts", {})
@@ -56,8 +56,18 @@ def build_agent_workflow(config: Dict[str, Any], llm: Optional[ChatGroq] = None)
 
     def categorize(state: State) -> State:
         """Categorize incoming queries"""
-        prompt_template = prompts.get("categorize", 
-            "Categorize this customer query into: Technical, Billing, General. Query: {query}")
+        # Add custom features context to categorization
+        custom_features = config.get("custom_features", [])
+        custom_context = ""
+        if custom_features:
+            custom_context = "Custom Business Information:\n" + "\n".join(f"- {f['name']}: {f['description']}" for f in custom_features)
+
+        prompt_template = prompts.get("categorize",
+            "Categorize this customer query into: Information, Support, Issues, General. If the query is about menu items or food, categorize as Information. If about availability or hours, categorize as Information. Query: {query}")
+
+        if custom_context:
+            prompt_template = f"{custom_context}\n\n{prompt_template}"
+
         prompt = ChatPromptTemplate.from_template(prompt_template)
         chain = prompt | llm
         response = chain.invoke({"query": state.query})
@@ -77,23 +87,48 @@ def build_agent_workflow(config: Dict[str, Any], llm: Optional[ChatGroq] = None)
     def handle_query(state: State) -> State:
         """Handle queries based on category and features"""
         category = state.category
-        prompt_key = f"handle_{category}" if category in ["technical", "billing"] else "general"
-        
+        prompt_key = f"handle_{category}" if category in ["technical", "billing", "menu", "pricing", "order", "delivery"] else "general"
+
         # Get category-specific prompt or fallback to general
         prompt_template = prompts.get(prompt_key, prompts.get("general",
-            "Provide a {tone} response to: {query}"))
-        
+            "Provide a {tone} response to: {query}. Use the custom business information provided above to give accurate details."))
+
+        # Add custom features context prominently
+        custom_features = config.get("custom_features", [])
+        custom_context = ""
+        if custom_features:
+            custom_context = "Custom Business Information:\n" + "\n".join(f"- {f['name']}: {f['description']}" for f in custom_features)
+
         # Add feature context to prompt
         feature_context = "\n".join(f"- {f['name']}: {f['description']}" for f in features)
         if feature_context:
             prompt_template = f"Available features:\n{feature_context}\n\n{prompt_template}"
-        
+
+        # Add menu data context for food delivery
+        menu_context = ""
+        if config.get("menu_data"):
+            menu_data = config["menu_data"]
+            if menu_data.get("menu_items"):
+                menu_context += f"\nMenu Items:\n" + "\n".join(f"- {item}" for item in menu_data["menu_items"])
+            if menu_data.get("pricing_info"):
+                menu_context += f"\nPricing Info: {menu_data['pricing_info']}"
+            if menu_data.get("special_offers"):
+                menu_context += f"\nSpecial Offers: {menu_data['special_offers']}"
+
+        if menu_context:
+            prompt_template = f"Business Information:{menu_context}\n\n{prompt_template}"
+
+        # Prepend custom context if available
+        if custom_context:
+            prompt_template = f"{custom_context}\n\nImportant: Use the custom business information above to provide accurate responses. For menu queries, list the available items with their prices. For availability queries, provide the operating hours.\n\n{prompt_template}"
+
         prompt = ChatPromptTemplate.from_template(prompt_template)
         chain = prompt | llm
         response = chain.invoke({
             "query": state.query,
             "tone": tone,
-            "features": feature_context
+            "features": feature_context,
+            "custom_info": custom_context
         })
         state.response = extract_content(response)
         return state

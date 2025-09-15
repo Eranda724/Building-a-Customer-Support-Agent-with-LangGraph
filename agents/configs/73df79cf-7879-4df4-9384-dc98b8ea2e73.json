@@ -1,0 +1,83 @@
+{
+  "business_name": "food",
+  "business_description": "food deliver app call agent",
+  "business_type": "universal",
+  "features": [
+    {
+      "id": "custom_0",
+      "name": "Custom 0",
+      "description": "Support for custom 0",
+      "priority": "medium"
+    },
+    {
+      "id": "custom_1",
+      "name": "Custom 1",
+      "description": "Support for custom 1",
+      "priority": "medium"
+    },
+    {
+      "id": "general_support",
+      "name": "General Support",
+      "description": "Support for general support",
+      "priority": "medium"
+    },
+    {
+      "id": "contact_management",
+      "name": "Contact Management",
+      "description": "Support for contact management",
+      "priority": "medium"
+    },
+    {
+      "id": "custom_0",
+      "name": "Custom 0",
+      "description": "Support for custom 0",
+      "priority": "medium"
+    },
+    {
+      "id": "custom_1",
+      "name": "Custom 1",
+      "description": "Support for custom 1",
+      "priority": "medium"
+    }
+  ],
+  "custom_features": [
+    {
+      "id": "custom_0",
+      "name": "menu",
+      "description": "rice = 100 , Kottu = 200",
+      "priority": "medium",
+      "is_custom": true
+    },
+    {
+      "id": "custom_1",
+      "name": "available",
+      "description": "monday to friday , \nSaturday and monday vacation",
+      "priority": "medium",
+      "is_custom": true
+    }
+  ],
+  "tone": "professional",
+  "prompts": {
+    "categorize": "Categorize this customer query into one of: Information, Support, Issues, General. Consider the context from the business description. Query: {query}",
+    "sentiment": "Analyze the sentiment of this query as positive, negative, or neutral. Query: {query}",
+    "handle_information": "Provide a {tone} response with information based on the business context. Use the business description to provide accurate details. Query: {query}",
+    "handle_support": "Provide a {tone} support response addressing the customer's needs. Query: {query}",
+    "handle_issues": "Provide a {tone} response addressing any issues or problems. Query: {query}",
+    "general": "Provide a {tone} response to this general query based on the business context. Query: {query}",
+    "escalate": "I understand this requires special attention. A support representative will contact you shortly."
+  },
+  "created_at": "2025-09-15T15:13:18.491598",
+  "last_modified": "2025-09-15T15:15:36.207461",
+  "current_step": 4,
+  "is_complete": true,
+  "menu_data": {
+    "menu_items": [],
+    "pricing_info": "",
+    "special_offers": ""
+  },
+  "custom_requirements": "Ask first user prompt and give the answer",
+  "contact_info": {
+    "email": "support@example.com",
+    "phone": "1-800-SUPPORT"
+  }
+}

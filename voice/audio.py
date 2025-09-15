@@ -30,7 +30,7 @@ groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # Initialize ChatGroq for LangChain
 llm = ChatGroq(
-    model="llama3-8b-8192",  # You can also use "mixtral-8x7b-32768" or "gemma-7b-it"
+    model="llama3-8b-8192",  # You can also use "gemma-7b-it"
     temperature=0.7,
     groq_api_key=os.getenv("GROQ_API_KEY")
 )
