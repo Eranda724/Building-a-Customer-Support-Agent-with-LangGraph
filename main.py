@@ -1,17 +1,23 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage
 import uuid
-import json
-from datetime import datetime
 import os
 from dotenv import load_dotenv
 from io import BytesIO
 import base64
+from audio import extract_text, generate_audio
+import ssl
+from cryptography import x509
+from cryptography.x509.oid import NameOID
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+import datetime
+import ipaddress
 
 # Import our custom modules
 from custom_agent_engine import State, build_agent_workflow
@@ -35,7 +41,56 @@ from agent_storage import (
 # Load environment variables
 load_dotenv()
 
-# Get API key and validate
+# Generate self-signed certificates for HTTPS if not exist
+if not os.path.exists('key.pem') or not os.path.exists('cert.pem'):
+    # Generate private key
+    key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+    )
+
+    # Generate certificate
+    subject = issuer = x509.Name([
+        x509.NameAttribute(NameOID.COUNTRY_NAME, "US"),
+        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "State"),
+        x509.NameAttribute(NameOID.LOCALITY_NAME, "City"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Organization"),
+        x509.NameAttribute(NameOID.COMMON_NAME, "localhost"),
+    ])
+
+    cert = x509.CertificateBuilder().subject_name(
+        subject
+    ).issuer_name(
+        issuer
+    ).public_key(
+        key.public_key()
+    ).serial_number(
+        x509.random_serial_number()
+    ).not_valid_before(
+        datetime.datetime.utcnow()
+    ).not_valid_after(
+        datetime.datetime.utcnow() + datetime.timedelta(days=365)
+    ).add_extension(
+        x509.SubjectAlternativeName([
+            x509.DNSName("localhost"),
+            x509.IPAddress(ipaddress.IPv4Address("127.0.0.1")),
+        ]),
+        critical=False,
+    ).sign(key, hashes.SHA256())
+
+    # Write private key
+    with open("key.pem", "wb") as f:
+        f.write(key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        ))
+
+    # Write certificate
+    with open("cert.pem", "wb") as f:
+        f.write(cert.public_bytes(serialization.Encoding.PEM))
+
+# Get API keys and validate
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 if not GROQ_API_KEY:
     raise ValueError(
@@ -48,6 +103,13 @@ if not GROQ_API_KEY.startswith("gsk_"):
         "Invalid GROQ_API_KEY format. "
         "The key should start with 'gsk_'. "
         "Please check your API key at https://console.groq.com/"
+    )
+
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+if not ELEVENLABS_API_KEY or ELEVENLABS_API_KEY == "sk_your_actual_elevenlabs_key_here":
+    raise ValueError(
+        "ELEVENLABS_API_KEY not found or is placeholder in environment variables. "
+        "Please create a .env file with your actual ElevenLabs API key from https://elevenlabs.io/app/profile"
     )
 
 # Initialize LLM with proper API key
@@ -477,7 +539,7 @@ async def query_custom_agent(query: CustomAgentQuery):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
 
-@app.post("/custom-agent/voice-query")
+@app.post("/custom-agent/voice-query/{agent_id}")
 async def voice_query_custom_agent(agent_id: str, audio_file: UploadFile = File(...)):
     """Handle voice queries for custom agents"""
     # Load agent configuration
@@ -490,9 +552,8 @@ async def voice_query_custom_agent(agent_id: str, audio_file: UploadFile = File(
         audio_content = await audio_file.read()
         audio_buffer = BytesIO(audio_content)
 
-        # Transcribe audio (simplified - would need actual transcription service)
-        # For now, return a placeholder response
-        query_text = "Voice query transcribed"
+        # Transcribe audio using Groq Whisper
+        query_text = extract_text(audio_buffer)
 
         # Create state for query
         state = State(query=query_text)
@@ -501,10 +562,29 @@ async def voice_query_custom_agent(agent_id: str, audio_file: UploadFile = File(
         workflow = build_agent_workflow(config)
         result = workflow.invoke(state)
 
+        # Generate audio response using ElevenLabs
+        try:
+            print(f"Generating audio for response: {result['response'][:100]}...")
+            audio_response_bytes = generate_audio(result["response"])
+
+            # Check if audio generation was successful
+            if not audio_response_bytes:
+                print("Error: generate_audio returned empty bytes")
+                raise HTTPException(status_code=500, detail="Failed to generate audio response - no audio data received")
+
+            print(f"Audio generated successfully, size: {len(audio_response_bytes)} bytes")
+
+            # Convert to base64 for JSON response
+            audio_base64 = base64.b64encode(audio_response_bytes).decode()
+            print(f"Audio converted to base64, length: {len(audio_base64)}")
+        except Exception as audio_error:
+            print(f"Audio generation error: {str(audio_error)}")
+            raise HTTPException(status_code=500, detail=f"Failed to generate audio response: {str(audio_error)}")
+
         return {
             "transcribed_query": query_text,
             "response": result["response"],
-            "audio_response": base64.b64encode(b"audio_placeholder").decode()
+            "audio_response": audio_base64
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing voice query: {str(e)}")
@@ -650,4 +730,6 @@ async def delete_prompt(user_id: str, prompt_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    ssl_context.load_cert_chain('cert.pem', 'key.pem')
+    uvicorn.run(app, host="0.0.0.0", port=8443, ssl=ssl_context)

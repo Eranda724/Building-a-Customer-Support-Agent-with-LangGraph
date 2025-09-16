@@ -6,3 +6,8 @@ langchain-groq>=0.1.5
 langgraph==0.1.15
 pydantic>=2.5.3
 python-multipart==0.0.6
+simpleaudio
+sounddevice
+elevenlabs
+cryptography
+requests

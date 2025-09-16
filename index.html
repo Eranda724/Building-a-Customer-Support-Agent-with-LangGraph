@@ -269,7 +269,24 @@
             placeholder="Type your question for the custom agent..."
           ></textarea>
           <button onclick="testCustomAgent()">Test Custom Agent</button>
+          <br /><br />
+          <button
+            id="voiceRecordBtn"
+            onclick="startVoiceRecording()"
+            style="background-color: #dc2626; margin-top: 10px"
+          >
+            🎤 Record Voice Query
+          </button>
+          <div
+            id="recordingStatus"
+            style="margin: 10px 0; color: #dc2626; font-weight: bold"
+          ></div>
           <div id="customResponse"></div>
+          <audio
+            id="responseAudio"
+            controls
+            style="display: none; margin-top: 10px"
+          ></audio>
         </div>
       </div>
 
@@ -298,6 +315,223 @@
       let featureDetails = {}
       let isFullscreen = false
       let currentUserSession = null
+      let mediaRecorder = null
+      let audioChunks = []
+      let isRecording = false
+      let audioContext = null
+      let analyser = null
+      let microphone = null
+      let volumeBar = null
+      let animationId = null
+
+      function initVolumeBar() {
+        // Create volume bar element
+        volumeBar = document.createElement('div')
+        volumeBar.id = 'volumeBar'
+        volumeBar.style.cssText = `
+          width: 200px;
+          height: 20px;
+          background-color: #e2e8f0;
+          border-radius: 10px;
+          margin: 10px 0;
+          overflow: hidden;
+          display: none;
+        `
+
+        const volumeFill = document.createElement('div')
+        volumeFill.id = 'volumeFill'
+        volumeFill.style.cssText = `
+          height: 100%;
+          width: 0%;
+          background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+          border-radius: 10px;
+          transition: width 0.1s ease;
+        `
+
+        volumeBar.appendChild(volumeFill)
+
+        // Insert volume bar after the record button
+        const recordBtn = document.getElementById('voiceRecordBtn')
+        recordBtn.parentNode.insertBefore(volumeBar, recordBtn.nextSibling)
+      }
+
+      function updateVolumeBar() {
+        if (!analyser) return
+
+        const bufferLength = analyser.frequencyBinCount
+        const dataArray = new Uint8Array(bufferLength)
+        analyser.getByteFrequencyData(dataArray)
+
+        // Calculate average volume
+        let sum = 0
+        for (let i = 0; i < bufferLength; i++) {
+          sum += dataArray[i]
+        }
+        const average = sum / bufferLength
+        const volumePercent = Math.min((average / 255) * 100, 100)
+
+        // Update volume bar
+        const volumeFill = document.getElementById('volumeFill')
+        if (volumeFill) {
+          volumeFill.style.width = volumePercent + '%'
+        }
+
+        if (isRecording) {
+          animationId = requestAnimationFrame(updateVolumeBar)
+        }
+      }
+
+      async function startVoiceRecording() {
+        const agentId = document.getElementById('agentId').value.trim()
+        const recordBtn = document.getElementById('voiceRecordBtn')
+        const statusDiv = document.getElementById('recordingStatus')
+
+        if (!agentId) {
+          alert('Please enter an Agent ID first')
+          return
+        }
+
+        if (!isRecording) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+              audio: true,
+            })
+            mediaRecorder = new MediaRecorder(stream)
+            audioChunks = []
+
+            // Initialize Web Audio API for volume monitoring
+            audioContext = new (window.AudioContext ||
+              window.webkitAudioContext)()
+            analyser = audioContext.createAnalyser()
+            microphone = audioContext.createMediaStreamSource(stream)
+            microphone.connect(analyser)
+            analyser.fftSize = 256
+
+            mediaRecorder.ondataavailable = (event) => {
+              audioChunks.push(event.data)
+            }
+
+            mediaRecorder.onstop = async () => {
+              const audioBlob = new Blob(audioChunks, { type: 'audio/wav' })
+              await sendVoiceQuery(audioBlob, agentId)
+
+              // Stop all tracks
+              stream.getTracks().forEach((track) => track.stop())
+
+              // Clean up audio context
+              if (audioContext) {
+                audioContext.close()
+                audioContext = null
+              }
+              if (animationId) {
+                cancelAnimationFrame(animationId)
+                animationId = null
+              }
+
+              // Hide volume bar
+              if (volumeBar) {
+                volumeBar.style.display = 'none'
+              }
+            }
+
+            mediaRecorder.start()
+            isRecording = true
+            recordBtn.textContent = '⏹️ Stop Recording'
+            recordBtn.style.backgroundColor = '#dc2626'
+            statusDiv.textContent = 'Recording... Click stop when finished.'
+
+            // Show and start volume bar
+            if (volumeBar) {
+              volumeBar.style.display = 'block'
+              updateVolumeBar()
+            }
+          } catch (error) {
+            console.error('Error accessing microphone:', error)
+            let errorMessage = 'Could not access microphone. '
+
+            if (error.name === 'NotAllowedError') {
+              errorMessage +=
+                'Microphone permission was denied. Please:\n\n' +
+                '1. Click the lock/camera icon in your browser address bar\n' +
+                '2. Allow microphone access for this site\n' +
+                '3. Refresh the page and try again'
+            } else if (error.name === 'NotFoundError') {
+              errorMessage += 'No microphone found on this device.'
+            } else if (error.name === 'NotReadableError') {
+              errorMessage +=
+                'Microphone is already in use by another application.'
+            } else if (error.name === 'OverconstrainedError') {
+              errorMessage +=
+                'Microphone does not meet the required constraints.'
+            } else if (error.name === 'SecurityError') {
+              errorMessage +=
+                'Microphone access requires HTTPS. Please use https://localhost:8443 instead of http://localhost:8000'
+            } else {
+              errorMessage +=
+                'Please check your browser settings and try again.'
+            }
+
+            alert(errorMessage)
+            statusDiv.textContent =
+              'Microphone access failed. Check the error message above.'
+          }
+        } else {
+          mediaRecorder.stop()
+          isRecording = false
+          recordBtn.textContent = '🎤 Record Voice Query'
+          recordBtn.style.backgroundColor = '#dc2626'
+          statusDiv.textContent = 'Processing your voice query...'
+        }
+      }
+
+      async function sendVoiceQuery(audioBlob, agentId) {
+        const statusDiv = document.getElementById('recordingStatus')
+        const responseDiv = document.getElementById('customResponse')
+        const audioElement = document.getElementById('responseAudio')
+
+        try {
+          const formData = new FormData()
+          formData.append('audio_file', audioBlob, 'voice_query.wav')
+
+          const res = await fetch(`/custom-agent/voice-query/${agentId}`, {
+            method: 'POST',
+            body: formData,
+          })
+
+          const data = await res.json()
+
+          if (res.ok) {
+            responseDiv.innerHTML = `
+              <div class="response-box">
+                <strong>You said:</strong> "${data.transcribed_query}"<br><br>
+                <strong>Agent response:</strong> ${data.response}
+              </div>
+            `
+
+            // Play audio response
+            if (data.audio_response) {
+              const audioData = atob(data.audio_response)
+              const audioBlob = new Blob(
+                [new Uint8Array([...audioData].map((c) => c.charCodeAt(0)))],
+                { type: 'audio/mp3' }
+              )
+              const audioUrl = URL.createObjectURL(audioBlob)
+              audioElement.src = audioUrl
+              audioElement.style.display = 'block'
+              audioElement.play()
+            }
+
+            statusDiv.textContent = 'Voice query processed successfully!'
+          } else {
+            responseDiv.innerHTML = `<div class="result-box" style="color: red;">Error: ${data.detail}</div>`
+            statusDiv.textContent = 'Error processing voice query.'
+          }
+        } catch (error) {
+          console.error('Error sending voice query:', error)
+          responseDiv.innerHTML = `<div class="result-box" style="color: red;">Error: Could not send voice query</div>`
+          statusDiv.textContent = 'Error sending voice query.'
+        }
+      }
 
       function toggleFullscreen() {
         isFullscreen = !isFullscreen
@@ -937,6 +1171,11 @@
           'Guide applied! Now click "Start Building Custom Agent" to create your agent with these details.'
         )
       }
+
+      // Initialize volume bar when page loads
+      document.addEventListener('DOMContentLoaded', function () {
+        initVolumeBar()
+      })
     </script>
   </body>
 </html>

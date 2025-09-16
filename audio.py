@@ -17,7 +17,7 @@ from elevenlabs import play
 from typing import Optional
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
-import json 
+import json
 
 
 load_dotenv()
@@ -41,17 +41,78 @@ class UserDetails(BaseModel):
     email: str = Field(description="The user's email address")
     phone_number: str = Field(description="The user's phone number")
 
-def generate_audio(text: str, model: str = "eleven_multilingual_v2") -> None:
+def generate_audio(text: str, model: str = "eleven_monolingual_v1", play_locally: bool = False) -> bytes:
     """
-    Generate audio from text using ElevenLabs API.
+    Generate audio from text using ElevenLabs API with English-only model.
+    Returns audio bytes. Set play_locally=True to also play locally.
     """
-    audio = elevenlabs.text_to_speech.convert(
-        text=text,
-        voice_id="JBFqnCBsd6RMkjVDRZzb",
-        model_id=model,
-        output_format="mp3_44100_128",
-    )
-    play(audio)
+    try:
+        import requests
+
+        api_key = os.getenv("ELEVENLABS_API_KEY")
+        if not api_key or api_key == "sk_your_actual_elevenlabs_key_here":
+            print("Error: ELEVENLABS_API_KEY not set or is placeholder")
+            return b''
+
+        # Use direct API call with requests for reliability
+        # Try Rachel's voice first, fallback to a default voice if not available
+        voice_id = "EXAVITQu4vr4xnSDxMaL"  # Rachel's voice
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+        print(f"Using ElevenLabs voice ID: {voice_id}")
+
+        headers = {
+            "Accept": "audio/mpeg",
+            "Content-Type": "application/json",
+            "xi-api-key": api_key
+        }
+
+        data = {
+            "text": text,
+            "model_id": model,  # eleven_monolingual_v1 for English-only
+            "voice_settings": {
+                "stability": 0.5,
+                "similarity_boost": 0.5
+            }
+        }
+
+        print(f"Making ElevenLabs API request to: {url}")
+        print(f"Request data: {data}")
+
+        response = requests.post(url, json=data, headers=headers)
+        print(f"ElevenLabs API response status: {response.status_code}")
+
+        if response.status_code != 200:
+            print(f"ElevenLabs API error response: {response.text}")
+
+            # If the model/voice combination fails, try with a different model
+            if response.status_code == 400 and ("model" in response.text.lower() or "voice" in response.text.lower()):
+                print("Trying with eleven_multilingual_v2 model...")
+                data["model_id"] = "eleven_multilingual_v2"
+                response = requests.post(url, json=data, headers=headers)
+                print(f"Retry response status: {response.status_code}")
+
+                if response.status_code != 200:
+                    print(f"Retry also failed: {response.text}")
+
+            response.raise_for_status()
+
+        audio_bytes = response.content
+        print(f"Received audio data, size: {len(audio_bytes)} bytes")
+
+        if not audio_bytes:
+            print("Error: No audio data received from ElevenLabs")
+            return b''
+
+        if play_locally and audio_bytes:
+            play(audio_bytes)
+
+        return audio_bytes
+    except requests.exceptions.RequestException as e:
+        print(f"Error with ElevenLabs API request: {e}")
+        return b''
+    except Exception as e:
+        print(f"Error generating audio: {e}")
+        return b''
 
 def record_user_input(duration: int = 10, fs: int = 44100) -> BytesIO:
     """
@@ -85,13 +146,20 @@ class State(TypedDict):
     user_details: list[dict[str, str]]
     tech_stack_details: Optional[list[dict[str, str]]]
 
-def speak_and_listen(agent_prompt: str, record_duration=10) -> str:
+def speak_and_listen(agent_prompt: str, record_duration=10, backend_mode: bool = False) -> str:
     """
     Generate agent audio, play it, record user response, and transcribe.
+    In backend_mode=True, returns audio bytes instead of playing.
     """
     # Generate agent audio
     print(f"Agent Prompt: {agent_prompt}")
-    generate_audio(agent_prompt)
+    audio_bytes = generate_audio(agent_prompt, play_locally=not backend_mode)
+
+    if backend_mode:
+        # In backend mode, don't record - just return the audio bytes as string for now
+        # The actual recording will happen on the frontend
+        return audio_bytes.decode('latin-1') if isinstance(audio_bytes, bytes) else str(audio_bytes)
+
     # Record user response
     user_audio = record_user_input(record_duration)
     # Transcribe user response
